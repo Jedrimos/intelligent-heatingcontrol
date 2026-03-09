@@ -53,6 +53,7 @@ from .const import (
     CONF_SCHEDULES,
     CONF_MIN_TEMP,
     CONF_MAX_TEMP,
+    CONF_ENABLE_COOLING,
     CONF_SYSTEM_MODE,
     CONF_AWAY_TEMP,
     CONF_VACATION_TEMP,
@@ -446,14 +447,17 @@ class IHCCoordinator(DataUpdateCoordinator):
             }
 
         # Klimabaustein decision
+        cfg = self.get_config()
+        enable_cooling = bool(cfg.get(CONF_ENABLE_COOLING, False))
         should_heat = self._controller.should_heat(self._system_mode)
-        should_cool = self._controller.should_cool(self._system_mode)
+        should_cool = self._controller.should_cool(self._system_mode) if enable_cooling else False
         total_demand = self._controller.get_total_demand()
         rooms_demanding = self._controller.get_rooms_demanding()
 
         # Control the physical heating/cooling switches
         self._set_heating_switch(should_heat)
-        self._set_cooling_switch(should_cool)
+        if enable_cooling:
+            self._set_cooling_switch(should_cool)
 
         return {
             "outdoor_temp": outdoor_temp,

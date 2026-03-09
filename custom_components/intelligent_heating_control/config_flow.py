@@ -91,11 +91,22 @@ class IHCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if heating_switch and self.hass.states.get(heating_switch) is None:
                 errors[CONF_HEATING_SWITCH] = "entity_not_found"
 
+            enable_cooling = user_input.get(CONF_ENABLE_COOLING, False)
+            if enable_cooling:
+                cooling_switch = user_input.get(CONF_COOLING_SWITCH, "")
+                if not cooling_switch:
+                    errors[CONF_COOLING_SWITCH] = "entity_not_found"
+                elif self.hass.states.get(cooling_switch) is None:
+                    errors[CONF_COOLING_SWITCH] = "entity_not_found"
+            else:
+                user_input[CONF_COOLING_SWITCH] = ""
+
             if not errors:
                 self._data.update(user_input)
                 return await self.async_step_controller()
 
-        schema = vol.Schema({
+        enable_cooling_current = (user_input or {}).get(CONF_ENABLE_COOLING, False)
+        schema_dict: dict = {
             vol.Optional(CONF_OUTDOOR_TEMP_SENSOR, default=""): selector.selector({
                 "entity": {"domain": "sensor"}
             }),
@@ -105,10 +116,12 @@ class IHCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional(CONF_ENABLE_COOLING, default=False): selector.selector({
                 "boolean": {}
             }),
-            vol.Optional(CONF_COOLING_SWITCH, default=""): selector.selector({
+        }
+        if enable_cooling_current:
+            schema_dict[vol.Optional(CONF_COOLING_SWITCH, default=(user_input or {}).get(CONF_COOLING_SWITCH, ""))] = selector.selector({
                 "entity": {"domain": ["switch", "input_boolean"]}
-            }),
-        })
+            })
+        schema = vol.Schema(schema_dict)
 
         return self.async_show_form(
             step_id="user",
@@ -214,12 +227,25 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
     ) -> config_entries.FlowResult:
         cfg = dict(self._config_entry.data)
         cfg.update(self._options)
+        errors: dict = {}
 
         if user_input is not None:
-            self._options.update(user_input)
-            return self.async_create_entry(title="", data=self._options)
+            enable_cooling = user_input.get(CONF_ENABLE_COOLING, False)
+            if enable_cooling:
+                cooling_switch = user_input.get(CONF_COOLING_SWITCH, "")
+                if not cooling_switch:
+                    errors[CONF_COOLING_SWITCH] = "entity_not_found"
+                elif self.hass.states.get(cooling_switch) is None:
+                    errors[CONF_COOLING_SWITCH] = "entity_not_found"
+            else:
+                user_input[CONF_COOLING_SWITCH] = ""
 
-        schema = vol.Schema({
+            if not errors:
+                self._options.update(user_input)
+                return self.async_create_entry(title="", data=self._options)
+
+        enable_cooling_current = (user_input or cfg).get(CONF_ENABLE_COOLING, False)
+        schema_dict: dict = {
             vol.Optional(
                 CONF_OUTDOOR_TEMP_SENSOR,
                 default=cfg.get(CONF_OUTDOOR_TEMP_SENSOR, "")
@@ -228,6 +254,17 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
                 CONF_HEATING_SWITCH,
                 default=cfg.get(CONF_HEATING_SWITCH, "")
             ): selector.selector({"entity": {"domain": ["switch", "input_boolean"]}}),
+            vol.Optional(
+                CONF_ENABLE_COOLING,
+                default=bool(enable_cooling_current)
+            ): selector.selector({"boolean": {}}),
+        }
+        if enable_cooling_current:
+            cooling_default = (user_input or cfg).get(CONF_COOLING_SWITCH, "")
+            schema_dict[vol.Optional(CONF_COOLING_SWITCH, default=cooling_default)] = selector.selector(
+                {"entity": {"domain": ["switch", "input_boolean"]}}
+            )
+        schema_dict.update({
             vol.Optional(
                 CONF_DEMAND_THRESHOLD,
                 default=float(cfg.get(CONF_DEMAND_THRESHOLD, DEFAULT_DEMAND_THRESHOLD))
@@ -271,7 +308,7 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
                 "number": {"min": 5, "max": 25, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
         })
-        return self.async_show_form(step_id="global_settings", data_schema=schema)
+        return self.async_show_form(step_id="global_settings", data_schema=vol.Schema(schema_dict), errors=errors)
 
     # ------------------------------------------------------------------
     # Heating curve editor
@@ -467,6 +504,15 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             }),
             vol.Optional(CONF_SLEEP_TEMP, default=float(room.get(CONF_SLEEP_TEMP, DEFAULT_SLEEP_TEMP))): selector.selector({
                 "number": {"min": 10, "max": 25, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_AWAY_TEMP_ROOM, default=float(room.get(CONF_AWAY_TEMP_ROOM, DEFAULT_AWAY_TEMP_ROOM))): selector.selector({
+                "number": {"min": 5, "max": 20, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_MIN_TEMP, default=float(room.get(CONF_MIN_TEMP, DEFAULT_MIN_TEMP))): selector.selector({
+                "number": {"min": 5, "max": 15, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_MAX_TEMP, default=float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP))): selector.selector({
+                "number": {"min": 20, "max": 35, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
         })
         return self.async_show_form(step_id="edit_room_details", data_schema=schema)

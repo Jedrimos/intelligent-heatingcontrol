@@ -57,6 +57,8 @@
         "data": {
           "outdoor_temp_sensor": "Außentemperatur-Sensor",
           "heating_switch": "Heizungsschalter",
+          "enable_cooling": "Kühlung aktivieren",
+          "cooling_switch": "Kühlungsschalter",
           "demand_threshold": "Einschaltschwelle (%)",
           "demand_hysteresis": "Hysterese (%)",
           "min_on_time": "Mindest-Einschaltzeit (min)",
@@ -122,7 +124,10 @@
           "weight": "Gewichtung",
           "comfort_temp": "Komfort-Temperatur (°C)",
           "eco_temp": "Eco-Temperatur (°C)",
-          "sleep_temp": "Schlaf-Temperatur (°C)"
+          "sleep_temp": "Schlaf-Temperatur (°C)",
+          "away_temp_room": "Abwesend-Temperatur (°C)",
+          "min_temp": "Minimal-Temperatur (°C)",
+          "max_temp": "Maximal-Temperatur (°C)"
         }
       },
       "remove_room": {
