@@ -720,19 +720,19 @@ class IHCPanel extends HTMLElement {
           <div class="settings-item">
             <label>Abwesend-Temperatur (°C)</label>
             <input type="number" class="form-input" id="away-temp"
-              min="5" max="25" step="0.5" value="16">
+              min="5" max="25" step="0.5" value="${a.away_temp ?? 16}">
             <span class="form-hint">Alle Zimmer bei System „Abwesend"</span>
           </div>
           <div class="settings-item">
             <label>Urlaubs-Temperatur (°C)</label>
             <input type="number" class="form-input" id="vacation-temp"
-              min="5" max="20" step="0.5" value="14">
+              min="5" max="20" step="0.5" value="${a.vacation_temp ?? 14}">
             <span class="form-hint">Nur Frostschutz, alle Zimmer</span>
           </div>
           <div class="settings-item">
             <label>Frostschutz-Temperatur (°C)</label>
             <input type="number" class="form-input" id="frost-temp"
-              min="4" max="15" step="0.5" value="7">
+              min="4" max="15" step="0.5" value="${a.frost_protection_temp ?? 7}">
             <span class="form-hint">Niemals unter diesen Wert (auch bei OFF)</span>
           </div>
         </div>
@@ -740,14 +740,14 @@ class IHCPanel extends HTMLElement {
           <div class="settings-item">
             <label>Sommerautomatik</label>
             <select class="form-select" id="summer-enabled">
-              <option value="false">Deaktiviert</option>
-              <option value="true">Aktiviert</option>
+              <option value="false" ${!a.summer_mode_enabled ? "selected" : ""}>Deaktiviert</option>
+              <option value="true" ${a.summer_mode_enabled ? "selected" : ""}>Aktiviert</option>
             </select>
           </div>
           <div class="settings-item">
             <label>Sommer-Schwelle (°C)</label>
             <input type="number" class="form-input" id="summer-threshold"
-              min="10" max="30" step="0.5" value="18">
+              min="10" max="30" step="0.5" value="${a.summer_threshold ?? 18}">
             <span class="form-hint">Heizung gesperrt ab dieser Außentemp.</span>
           </div>
         </div>
@@ -764,21 +764,21 @@ class IHCPanel extends HTMLElement {
           <div class="settings-item">
             <label>Nachtabsenkung</label>
             <select class="form-select" id="night-setback-enabled">
-              <option value="false">Deaktiviert</option>
-              <option value="true">Aktiviert</option>
+              <option value="false" ${!a.night_setback_enabled ? "selected" : ""}>Deaktiviert</option>
+              <option value="true" ${a.night_setback_enabled ? "selected" : ""}>Aktiviert</option>
             </select>
             <span class="form-hint">Temperaturen nachts automatisch absenken</span>
           </div>
           <div class="settings-item">
             <label>Absenkung (°C)</label>
             <input type="number" class="form-input" id="night-setback-offset"
-              min="0.5" max="6" step="0.5" value="2">
+              min="0.5" max="6" step="0.5" value="${a.night_setback_offset ?? 2}">
             <span class="form-hint">Um wieviel °C nachts abgesenkt wird</span>
           </div>
           <div class="settings-item">
             <label>Vorheiz-Vorlaufzeit (min)</label>
             <input type="number" class="form-input" id="preheat-minutes"
-              min="0" max="120" step="5" value="0">
+              min="0" max="120" step="5" value="${a.preheat_minutes ?? 0}">
             <span class="form-hint">Wie früh vor Zeitplan-Start wird vorgeheizt (0 = aus)</span>
           </div>
         </div>

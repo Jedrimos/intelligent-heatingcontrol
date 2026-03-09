@@ -15,7 +15,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, CONF_ROOM_ID, CONF_ROOM_NAME
+from .const import (
+    DOMAIN, CONF_ROOM_ID, CONF_ROOM_NAME,
+    CONF_AWAY_TEMP, CONF_VACATION_TEMP,
+    CONF_SUMMER_MODE_ENABLED, CONF_SUMMER_THRESHOLD,
+    CONF_FROST_PROTECTION_TEMP, CONF_NIGHT_SETBACK_ENABLED,
+    CONF_NIGHT_SETBACK_OFFSET, CONF_PREHEAT_MINUTES,
+    DEFAULT_AWAY_TEMP, DEFAULT_VACATION_TEMP,
+    DEFAULT_SUMMER_THRESHOLD, DEFAULT_FROST_PROTECTION_TEMP,
+    DEFAULT_NIGHT_SETBACK_OFFSET, DEFAULT_PREHEAT_MINUTES,
+)
 from .coordinator import IHCCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -96,6 +105,22 @@ class IHCTotalDemandSensor(_IHCBase, SensorEntity):
             "min_on_time_minutes":  debug.get("min_on_time_minutes"),
             "min_off_time_minutes": debug.get("min_off_time_minutes"),
             "min_rooms_demand":     debug.get("min_rooms_demand"),
+            # Global config settings (read by frontend panel for pre-populating forms)
+            **self._get_global_config_attrs(),
+        }
+
+
+    def _get_global_config_attrs(self) -> dict:
+        cfg = self.coordinator.get_config()
+        return {
+            "away_temp":               cfg.get(CONF_AWAY_TEMP, DEFAULT_AWAY_TEMP),
+            "vacation_temp":           cfg.get(CONF_VACATION_TEMP, DEFAULT_VACATION_TEMP),
+            "summer_mode_enabled":     cfg.get(CONF_SUMMER_MODE_ENABLED, False),
+            "summer_threshold":        cfg.get(CONF_SUMMER_THRESHOLD, DEFAULT_SUMMER_THRESHOLD),
+            "frost_protection_temp":   cfg.get(CONF_FROST_PROTECTION_TEMP, DEFAULT_FROST_PROTECTION_TEMP),
+            "night_setback_enabled":   cfg.get(CONF_NIGHT_SETBACK_ENABLED, False),
+            "night_setback_offset":    cfg.get(CONF_NIGHT_SETBACK_OFFSET, DEFAULT_NIGHT_SETBACK_OFFSET),
+            "preheat_minutes":         cfg.get(CONF_PREHEAT_MINUTES, DEFAULT_PREHEAT_MINUTES),
         }
 
 
