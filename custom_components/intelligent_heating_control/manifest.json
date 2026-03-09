@@ -1,0 +1,13 @@
+{
+  "domain": "intelligent_heating_control",
+  "name": "Intelligent Heating Control",
+  "version": "1.0.0",
+  "documentation": "https://github.com/Jedrimos/intelligent-heatingcontroll",
+  "issue_tracker": "https://github.com/Jedrimos/intelligent-heatingcontroll/issues",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": ["@Jedrimos"],
+  "iot_class": "local_push",
+  "config_flow": true,
+  "integration_type": "hub"
+}

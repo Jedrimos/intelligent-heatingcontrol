@@ -1,0 +1,183 @@
+add_room:
+  name: Zimmer hinzufügen
+  description: Fügt ein neues Zimmer zur Heizungssteuerung hinzu.
+  fields:
+    name:
+      name: Zimmername
+      description: Name des Zimmers (z.B. "Wohnzimmer")
+      required: true
+      example: "Wohnzimmer"
+      selector:
+        text:
+    temp_sensor:
+      name: Temperatursensor
+      description: Entitäts-ID des Temperatursensors im Zimmer
+      required: false
+      example: "sensor.wohnzimmer_temperatur"
+      selector:
+        entity:
+          domain: sensor
+    valve_entity:
+      name: Thermostat/Ventil
+      description: Entitäts-ID des steuerbaren Thermostats oder Ventils (optional)
+      required: false
+      selector:
+        entity:
+          domain: climate
+    window_sensor:
+      name: Fenstersensor
+      description: Binärsensor für Fenster-offen-Erkennung (optional)
+      required: false
+      selector:
+        entity:
+          domain: binary_sensor
+    room_offset:
+      name: Zimmer-Offset (°C)
+      description: Offset zur Heizkurven-Basistemperatur für dieses Zimmer
+      required: false
+      default: 0.0
+      selector:
+        number:
+          min: -5
+          max: 5
+          step: 0.5
+          unit_of_measurement: "°C"
+    comfort_temp:
+      name: Komfort-Temperatur (°C)
+      required: false
+      default: 21.0
+      selector:
+        number:
+          min: 15
+          max: 30
+          step: 0.5
+    eco_temp:
+      name: Eco-Temperatur (°C)
+      required: false
+      default: 18.0
+      selector:
+        number:
+          min: 10
+          max: 25
+          step: 0.5
+    sleep_temp:
+      name: Schlaf-Temperatur (°C)
+      required: false
+      default: 17.0
+      selector:
+        number:
+          min: 10
+          max: 25
+          step: 0.5
+    deadband:
+      name: Totband (°C)
+      description: Proportionalbereich für die Anforderungsberechnung
+      required: false
+      default: 0.5
+      selector:
+        number:
+          min: 0.1
+          max: 2.0
+          step: 0.1
+    weight:
+      name: Gewichtung
+      description: Gewichtung dieses Zimmers bei der Gesamtanforderungsberechnung
+      required: false
+      default: 1.0
+      selector:
+        number:
+          min: 0.1
+          max: 5.0
+          step: 0.1
+
+remove_room:
+  name: Zimmer entfernen
+  description: Entfernt ein Zimmer aus der Heizungssteuerung.
+  fields:
+    id:
+      name: Zimmer-ID
+      description: Interne ID des zu entfernenden Zimmers
+      required: true
+      selector:
+        text:
+
+update_room:
+  name: Zimmer aktualisieren
+  description: Aktualisiert die Konfiguration eines bestehenden Zimmers.
+  fields:
+    id:
+      name: Zimmer-ID
+      description: Interne ID des Zimmers
+      required: true
+      selector:
+        text:
+    room_offset:
+      name: Zimmer-Offset (°C)
+      required: false
+      selector:
+        number:
+          min: -5
+          max: 5
+          step: 0.5
+    comfort_temp:
+      name: Komfort-Temperatur (°C)
+      required: false
+      selector:
+        number:
+          min: 15
+          max: 30
+          step: 0.5
+    eco_temp:
+      name: Eco-Temperatur (°C)
+      required: false
+      selector:
+        number:
+          min: 10
+          max: 25
+          step: 0.5
+
+set_room_mode:
+  name: Zimmermodus setzen
+  description: Setzt den Betriebsmodus für ein Zimmer.
+  fields:
+    id:
+      name: Zimmer-ID
+      required: true
+      selector:
+        text:
+    mode:
+      name: Modus
+      description: "auto, comfort, eco, sleep, away, off, manual"
+      required: true
+      selector:
+        select:
+          options:
+            - "auto"
+            - "comfort"
+            - "eco"
+            - "sleep"
+            - "away"
+            - "off"
+            - "manual"
+
+set_system_mode:
+  name: Systemmodus setzen
+  description: Setzt den globalen Betriebsmodus der Heizungssteuerung.
+  fields:
+    mode:
+      name: Modus
+      description: "auto, heat, cool, off, away, vacation"
+      required: true
+      selector:
+        select:
+          options:
+            - "auto"
+            - "heat"
+            - "cool"
+            - "off"
+            - "away"
+            - "vacation"
+
+reload:
+  name: Integration neu laden
+  description: Lädt die Intelligent Heating Control Integration neu.

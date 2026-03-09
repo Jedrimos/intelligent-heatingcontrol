@@ -1,0 +1,163 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Basic Settings",
+        "description": "Configure the outdoor temperature sensor and the heating switch.",
+        "data": {
+          "outdoor_temp_sensor": "Outdoor Temperature Sensor",
+          "heating_switch": "Heating Switch",
+          "enable_cooling": "Enable Cooling",
+          "cooling_switch": "Cooling Switch"
+        }
+      },
+      "controller": {
+        "title": "Climate Module Settings",
+        "description": "Configure the central heating controller (Klimabaustein). Total demand from all rooms is aggregated and compared against the threshold.",
+        "data": {
+          "demand_threshold": "Turn-on Threshold (%)",
+          "demand_hysteresis": "Hysteresis (%)",
+          "min_on_time": "Minimum On-Time (min)",
+          "min_off_time": "Minimum Off-Time (min)",
+          "min_rooms_demand": "Minimum Rooms Demanding Heat"
+        }
+      },
+      "temperatures": {
+        "title": "Temperature Presets",
+        "description": "Global temperatures for away and vacation modes.",
+        "data": {
+          "away_temp": "Away Temperature (°C)",
+          "vacation_temp": "Vacation Temperature (°C)"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Entity not found. Please check the entity ID.",
+      "cannot_connect": "Connection failed",
+      "unknown": "Unknown error"
+    },
+    "abort": {
+      "already_configured": "Integration already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "IHC Options",
+        "menu_options": {
+          "global_settings": "Global Settings",
+          "heating_curve": "Edit Heating Curve",
+          "add_room": "Add Room",
+          "edit_room": "Edit Room",
+          "remove_room": "Remove Room"
+        }
+      },
+      "global_settings": {
+        "title": "Global Settings",
+        "data": {
+          "outdoor_temp_sensor": "Outdoor Temperature Sensor",
+          "heating_switch": "Heating Switch",
+          "demand_threshold": "Turn-on Threshold (%)",
+          "demand_hysteresis": "Hysteresis (%)",
+          "min_on_time": "Minimum On-Time (min)",
+          "min_off_time": "Minimum Off-Time (min)",
+          "min_rooms_demand": "Minimum Rooms Demanding Heat",
+          "away_temp": "Away Temperature (°C)",
+          "vacation_temp": "Vacation Temperature (°C)"
+        }
+      },
+      "heating_curve": {
+        "title": "Heating Curve",
+        "description": "Define up to 7 points of the heating curve. outdoor = outdoor temperature, target = base target temperature (before room offset).",
+        "data": {
+          "outdoor_0": "Point 1: Outdoor Temp (°C)",
+          "target_0": "Point 1: Target Temp (°C)",
+          "outdoor_1": "Point 2: Outdoor Temp (°C)",
+          "target_1": "Point 2: Target Temp (°C)",
+          "outdoor_2": "Point 3: Outdoor Temp (°C)",
+          "target_2": "Point 3: Target Temp (°C)",
+          "outdoor_3": "Point 4: Outdoor Temp (°C)",
+          "target_3": "Point 4: Target Temp (°C)",
+          "outdoor_4": "Point 5: Outdoor Temp (°C)",
+          "target_4": "Point 5: Target Temp (°C)",
+          "outdoor_5": "Point 6: Outdoor Temp (°C)",
+          "target_5": "Point 6: Target Temp (°C)",
+          "outdoor_6": "Point 7: Outdoor Temp (°C)",
+          "target_6": "Point 7: Target Temp (°C)"
+        }
+      },
+      "add_room": {
+        "title": "Add Room",
+        "data": {
+          "name": "Room Name",
+          "temp_sensor": "Temperature Sensor",
+          "valve_entity": "Thermostat / Valve Entity (optional)",
+          "window_sensor": "Window Sensor (optional)",
+          "room_offset": "Room Offset (°C)",
+          "deadband": "Deadband (°C)",
+          "weight": "Weight",
+          "comfort_temp": "Comfort Temperature (°C)",
+          "eco_temp": "Eco Temperature (°C)",
+          "sleep_temp": "Sleep Temperature (°C)",
+          "away_temp_room": "Away Temperature (°C)",
+          "min_temp": "Minimum Temperature (°C)",
+          "max_temp": "Maximum Temperature (°C)"
+        }
+      },
+      "edit_room": {
+        "title": "Select Room",
+        "data": {
+          "room_id": "Room"
+        }
+      },
+      "edit_room_details": {
+        "title": "Edit Room",
+        "data": {
+          "name": "Room Name",
+          "temp_sensor": "Temperature Sensor",
+          "valve_entity": "Thermostat / Valve Entity (optional)",
+          "window_sensor": "Window Sensor (optional)",
+          "room_offset": "Room Offset (°C)",
+          "deadband": "Deadband (°C)",
+          "weight": "Weight",
+          "comfort_temp": "Comfort Temperature (°C)",
+          "eco_temp": "Eco Temperature (°C)",
+          "sleep_temp": "Sleep Temperature (°C)"
+        }
+      },
+      "remove_room": {
+        "title": "Remove Room",
+        "data": {
+          "room_id": "Select Room"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Entity not found",
+      "invalid_curve": "Invalid heating curve data",
+      "no_rooms": "No rooms configured"
+    },
+    "abort": {
+      "no_rooms": "No rooms configured",
+      "room_not_found": "Room not found"
+    }
+  },
+  "entity": {
+    "climate": {
+      "ihc_room_climate": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "Auto": "Auto",
+              "Comfort": "Comfort",
+              "Eco": "Eco",
+              "Sleep": "Sleep",
+              "Away": "Away",
+              "Manual": "Manual"
+            }
+          }
+        }
+      }
+    }
+  }
+}
