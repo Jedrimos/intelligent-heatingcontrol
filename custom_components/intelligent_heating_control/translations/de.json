@@ -9,17 +9,30 @@
           "heating_switch": "Heizungsschalter",
           "enable_cooling": "Kühlung aktivieren",
           "cooling_switch": "Kühlungsschalter"
+        },
+        "data_description": {
+          "outdoor_temp_sensor": "Sensor der die aktuelle Außentemperatur misst. Wird für die Heizkurve benötigt – je kälter draußen, desto höher die Zieltemperatur.",
+          "heating_switch": "Der Schalter, der Ihre Heizung ein- und ausschaltet (z.B. Heizungsregler, Kesselsteuerung).",
+          "enable_cooling": "Aktivieren Sie diese Option, wenn Ihre Anlage auch kühlen kann (z.B. Wärmepumpe mit Kühlbetrieb).",
+          "cooling_switch": "Der Schalter, der den Kühlbetrieb startet. Wird nur aktiviert, wenn die Räume zu warm sind."
         }
       },
       "controller": {
         "title": "Klimabaustein Einstellungen",
-        "description": "Konfigurieren Sie den zentralen Heizungsregler (Klimabaustein). Die Gesamtanforderung aller Zimmer wird aggregiert und mit dem Schwellenwert verglichen.",
+        "description": "Diese Einstellungen bestimmen, wann die Heizung ein- und ausschaltet. Die Heizanforderungen aller Zimmer werden zusammengerechnet und mit dem Schwellenwert verglichen.",
         "data": {
           "demand_threshold": "Einschaltschwelle (%)",
           "demand_hysteresis": "Hysterese (%)",
           "min_on_time": "Mindest-Einschaltzeit (min)",
           "min_off_time": "Mindest-Ausschaltzeit (min)",
           "min_rooms_demand": "Mindestanzahl Zimmer mit Anforderung"
+        },
+        "data_description": {
+          "demand_threshold": "Ab welchem Gesamtwärmebedarf (0–100 %) die Heizung einschalten soll. Empfehlung: 20–40 %. Niedrigere Werte = Heizung schaltet früher ein.",
+          "demand_hysteresis": "Puffer damit die Heizung nicht ständig ein- und ausschaltet. Die Heizung schaltet erst aus, wenn der Bedarf um diesen Wert unter die Einschaltschwelle fällt. Empfehlung: 5–10 %.",
+          "min_on_time": "Wie viele Minuten die Heizung mindestens eingeschaltet bleiben muss, bevor sie wieder ausschalten darf. Schützt den Brenner vor Kurzzyklen.",
+          "min_off_time": "Wie viele Minuten die Heizung mindestens ausgeschaltet bleiben muss, bevor sie wieder einschalten darf. Schützt den Brenner vor Kurzzyklen.",
+          "min_rooms_demand": "Wie viele Zimmer gleichzeitig Wärme anfordern müssen, damit die Heizung einschaltet. Verhindert, dass die Heizung für einen einzelnen Raum anläuft."
         }
       },
       "temperatures": {
@@ -28,6 +41,10 @@
         "data": {
           "away_temp": "Abwesend-Temperatur (°C)",
           "vacation_temp": "Urlaubs-Temperatur (°C)"
+        },
+        "data_description": {
+          "away_temp": "Zieltemperatur für alle Zimmer, wenn der Modus 'Abwesend' aktiv ist (z.B. tagsüber niemand zuhause). Typisch: 16–18 °C.",
+          "vacation_temp": "Zieltemperatur für alle Zimmer im Urlaubsmodus. Nur Frostschutz und minimale Temperatur. Typisch: 14–16 °C."
         }
       }
     },
@@ -66,6 +83,19 @@
           "min_rooms_demand": "Mindestanzahl Zimmer mit Anforderung",
           "away_temp": "Abwesend-Temperatur (°C)",
           "vacation_temp": "Urlaubs-Temperatur (°C)"
+        },
+        "data_description": {
+          "outdoor_temp_sensor": "Sensor der die aktuelle Außentemperatur misst. Wird für die Heizkurve benötigt.",
+          "heating_switch": "Der Schalter, der Ihre Heizung ein- und ausschaltet (z.B. Heizungsregler, Kesselsteuerung).",
+          "enable_cooling": "Aktivieren wenn Ihre Anlage auch kühlen kann (z.B. Wärmepumpe mit Kühlbetrieb).",
+          "cooling_switch": "Der Schalter, der den Kühlbetrieb startet.",
+          "demand_threshold": "Ab welchem Gesamtwärmebedarf (0–100 %) die Heizung einschalten soll. Empfehlung: 20–40 %.",
+          "demand_hysteresis": "Puffer gegen ständiges Ein-/Ausschalten. Empfehlung: 5–10 %.",
+          "min_on_time": "Mindest-Laufzeit der Heizung in Minuten. Schützt den Brenner vor Kurzzyklen.",
+          "min_off_time": "Mindest-Pausenzeit der Heizung in Minuten. Schützt den Brenner vor Kurzzyklen.",
+          "min_rooms_demand": "Wie viele Zimmer gleichzeitig Wärme anfordern müssen, damit die Heizung einschaltet.",
+          "away_temp": "Zieltemperatur im Abwesend-Modus für alle Zimmer. Typisch: 16–18 °C.",
+          "vacation_temp": "Zieltemperatur im Urlaubs-Modus. Nur Frostschutz. Typisch: 14–16 °C."
         }
       },
       "heating_curve": {
@@ -104,6 +134,21 @@
           "away_temp_room": "Abwesend-Temperatur (°C)",
           "min_temp": "Minimal-Temperatur (°C)",
           "max_temp": "Maximal-Temperatur (°C)"
+        },
+        "data_description": {
+          "name": "Ein eindeutiger Name für diesen Raum, z.B. 'Wohnzimmer' oder 'Schlafzimmer'.",
+          "temp_sensor": "Temperatursensor in diesem Raum. Misst die aktuelle Raumtemperatur.",
+          "valve_entity": "Optionales Thermostatventil oder Heizköper-Thermostat (TRV) in diesem Raum. Wenn angegeben, wird der Sollwert automatisch gesetzt.",
+          "window_sensor": "Optionaler Fenster- oder Türsensor. Wenn das Fenster geöffnet ist, wird die Heizanforderung für diesen Raum deaktiviert.",
+          "room_offset": "Korrekturwert falls der Sensor nicht ganz genau misst oder an einer ungünstigen Stelle montiert ist. Positiv = Sensor zeigt zu kalt an.",
+          "deadband": "Empfindlichkeit der Regelung. Kleiner Wert = reagiert schnell aber schaltet öfter. Empfehlung: 0,5 °C.",
+          "weight": "Wie stark dieser Raum die Gesamtanforderung beeinflusst. Höherer Wert = dieser Raum hat mehr Einfluss. Empfehlung: 1,0 für normale Zimmer.",
+          "comfort_temp": "Gewünschte Temperatur im Komfort-Modus (z.B. wenn jemand zuhause ist). Typisch: 20–22 °C.",
+          "eco_temp": "Abgesenkte Temperatur im Eco-Modus (z.B. nachts oder kurze Abwesenheit). Typisch: 17–19 °C.",
+          "sleep_temp": "Temperatur im Schlaf-Modus. Typisch kühler als Eco. Typisch: 16–18 °C.",
+          "away_temp_room": "Frostschutztemperatur wenn dieser Raum als 'Abwesend' markiert ist. Typisch: 15–16 °C.",
+          "min_temp": "Unterste Temperatur die niemals unterschritten werden darf (Frostschutz). Empfehlung: 7–10 °C.",
+          "max_temp": "Höchste Temperatur die nicht überschritten werden soll. Schutz vor Überhitzung. Empfehlung: 25–28 °C."
         }
       },
       "edit_room": {
@@ -128,6 +173,21 @@
           "away_temp_room": "Abwesend-Temperatur (°C)",
           "min_temp": "Minimal-Temperatur (°C)",
           "max_temp": "Maximal-Temperatur (°C)"
+        },
+        "data_description": {
+          "name": "Ein eindeutiger Name für diesen Raum, z.B. 'Wohnzimmer' oder 'Schlafzimmer'.",
+          "temp_sensor": "Temperatursensor in diesem Raum. Misst die aktuelle Raumtemperatur.",
+          "valve_entity": "Optionales Thermostatventil oder Heizköper-Thermostat (TRV) in diesem Raum. Wenn angegeben, wird der Sollwert automatisch gesetzt.",
+          "window_sensor": "Optionaler Fenster- oder Türsensor. Wenn das Fenster geöffnet ist, wird die Heizanforderung für diesen Raum deaktiviert.",
+          "room_offset": "Korrekturwert falls der Sensor nicht ganz genau misst oder an einer ungünstigen Stelle montiert ist. Positiv = Sensor zeigt zu kalt an.",
+          "deadband": "Empfindlichkeit der Regelung. Kleiner Wert = reagiert schnell aber schaltet öfter. Empfehlung: 0,5 °C.",
+          "weight": "Wie stark dieser Raum die Gesamtanforderung beeinflusst. Höherer Wert = dieser Raum hat mehr Einfluss. Empfehlung: 1,0 für normale Zimmer.",
+          "comfort_temp": "Gewünschte Temperatur im Komfort-Modus (z.B. wenn jemand zuhause ist). Typisch: 20–22 °C.",
+          "eco_temp": "Abgesenkte Temperatur im Eco-Modus (z.B. nachts oder kurze Abwesenheit). Typisch: 17–19 °C.",
+          "sleep_temp": "Temperatur im Schlaf-Modus. Typisch kühler als Eco. Typisch: 16–18 °C.",
+          "away_temp_room": "Frostschutztemperatur wenn dieser Raum als 'Abwesend' markiert ist. Typisch: 15–16 °C.",
+          "min_temp": "Unterste Temperatur die niemals unterschritten werden darf (Frostschutz). Empfehlung: 7–10 °C.",
+          "max_temp": "Höchste Temperatur die nicht überschritten werden soll. Schutz vor Überhitzung. Empfehlung: 25–28 °C."
         }
       },
       "remove_room": {
