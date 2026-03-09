@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
@@ -111,11 +112,9 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         return
 
     # Register static path
-    hass.http.register_static_path(
-        f"/ihc_static",
-        str(panel_dir),
-        cache_headers=False,
-    )
+    hass.http.async_register_static_paths([
+        StaticPathConfig("/ihc_static", str(panel_dir), cache_headers=False)
+    ])
 
     # Register as custom panel
     hass.components.frontend.async_register_built_in_panel(
