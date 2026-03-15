@@ -31,7 +31,9 @@ from .const import (
     CONF_CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE,
     CONF_GUEST_DURATION_HOURS, DEFAULT_GUEST_DURATION_HOURS,
     CONF_VACATION_RETURN_PREHEAT_DAYS, DEFAULT_VACATION_RETURN_PREHEAT_DAYS,
-    CONF_WEATHER_ENTITY, CONF_SUN_ENTITY,
+    CONF_WEATHER_ENTITY, CONF_WEATHER_COLD_THRESHOLD, DEFAULT_WEATHER_COLD_THRESHOLD,
+    CONF_WEATHER_COLD_BOOST, DEFAULT_WEATHER_COLD_BOOST,
+    CONF_SUN_ENTITY,
     DEFAULT_AWAY_TEMP, DEFAULT_VACATION_TEMP,
     DEFAULT_SUMMER_THRESHOLD, DEFAULT_FROST_PROTECTION_TEMP,
     DEFAULT_NIGHT_SETBACK_OFFSET, DEFAULT_PREHEAT_MINUTES,
@@ -166,6 +168,8 @@ class IHCTotalDemandSensor(_IHCBase, SensorEntity):
             "guest_duration_hours":        cfg.get(CONF_GUEST_DURATION_HOURS, DEFAULT_GUEST_DURATION_HOURS),
             "vacation_return_preheat_days": cfg.get(CONF_VACATION_RETURN_PREHEAT_DAYS, DEFAULT_VACATION_RETURN_PREHEAT_DAYS),
             "weather_entity":              cfg.get(CONF_WEATHER_ENTITY, ""),
+            "weather_cold_threshold":      cfg.get(CONF_WEATHER_COLD_THRESHOLD, DEFAULT_WEATHER_COLD_THRESHOLD),
+            "weather_cold_boost":          cfg.get(CONF_WEATHER_COLD_BOOST, DEFAULT_WEATHER_COLD_BOOST),
             "sun_entity":                  cfg.get(CONF_SUN_ENTITY, "sun.sun"),
         }
 
@@ -352,6 +356,7 @@ class IHCEnergyTodaySensor(_IHCBase, SensorEntity):
         d = self.coordinator.data or {}
         return {
             "solar_boost":              d.get("solar_boost", 0.0),
+            "cold_boost":               d.get("cold_boost", 0.0),
             "solar_power":              d.get("solar_power"),
             "energy_price":             d.get("energy_price"),
             "energy_price_eco_active":  (d.get("energy_price_eco_offset") or 0.0) > 0,

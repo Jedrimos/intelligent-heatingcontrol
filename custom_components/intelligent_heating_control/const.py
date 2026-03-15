@@ -57,6 +57,13 @@ CONF_WINDOW_SENSORS: Final = "window_sensors"   # list – mehrere Fenstersensor
 CONF_WINDOW_OPEN_TEMP: Final = "window_open_temp"
 CONF_WINDOW_REACTION_TIME: Final = "window_reaction_time"
 CONF_VALVE_ENTITIES: Final = "valve_entities"   # list – mehrere Thermostate/TRVs
+CONF_ECO_OFFSET: Final = "eco_offset"              # °C below comfort/curve target
+CONF_SLEEP_OFFSET: Final = "sleep_offset"          # °C below comfort/curve target
+CONF_AWAY_OFFSET: Final = "away_offset"            # °C below comfort/curve target (per room away)
+CONF_ECO_MAX_TEMP: Final = "eco_max_temp"          # hard ceiling for eco temperature
+CONF_SLEEP_MAX_TEMP: Final = "sleep_max_temp"      # hard ceiling for sleep temperature
+CONF_AWAY_MAX_TEMP: Final = "away_max_temp"        # hard ceiling for per-room away temperature
+CONF_HA_SCHEDULE_OFF_MODE: Final = "ha_schedule_off_mode"  # "eco" or "sleep" when no HA schedule active
 CONF_SCHEDULES: Final = "schedules"
 CONF_SCHEDULE_DAYS: Final = "days"
 CONF_SCHEDULE_PERIODS: Final = "periods"
@@ -89,6 +96,13 @@ DEFAULT_MIN_TEMP: Final = 5.0
 DEFAULT_MAX_TEMP: Final = 30.0
 DEFAULT_WINDOW_OPEN_TEMP: Final = 5.0
 DEFAULT_WINDOW_REACTION_TIME: Final = 30
+DEFAULT_ECO_OFFSET: Final = 3.0       # eco is 3°C below comfort by default
+DEFAULT_SLEEP_OFFSET: Final = 4.0     # sleep is 4°C below comfort by default
+DEFAULT_AWAY_OFFSET: Final = 6.0      # away is 6°C below comfort by default
+DEFAULT_ECO_MAX_TEMP: Final = 21.0    # eco never above 21°C
+DEFAULT_SLEEP_MAX_TEMP: Final = 19.0  # sleep never above 19°C
+DEFAULT_AWAY_MAX_TEMP: Final = 18.0   # per-room away never above 18°C
+DEFAULT_HA_SCHEDULE_OFF_MODE: Final = "eco"  # fallback when no HA schedule active
 DEFAULT_SUMMER_THRESHOLD: Final = 18.0
 DEFAULT_FROST_PROTECTION_TEMP: Final = 7.0
 DEFAULT_NIGHT_SETBACK_OFFSET: Final = 2.0
@@ -245,6 +259,16 @@ DEFAULT_VACATION_RETURN_PREHEAT_DAYS: Final = 0  # disabled
 CONF_WEATHER_ENTITY: Final = "weather_entity"
 CONF_WEATHER_COLD_THRESHOLD: Final = "weather_cold_threshold"  # °C below which cold warning shows
 DEFAULT_WEATHER_COLD_THRESHOLD: Final = 0.0
+CONF_WEATHER_COLD_BOOST: Final = "weather_cold_boost"          # °C added to target when cold warning
+DEFAULT_WEATHER_COLD_BOOST: Final = 0.0                        # 0 = disabled by default
+
+# HA Schedule-Entitäten pro Zimmer
+CONF_HA_SCHEDULES: Final = "ha_schedules"
+# Each entry is a dict:
+#   entity          (str)  – schedule.* entity_id
+#   temperature     (float)– target temp when schedule is ON
+#   condition_entity(str)  – optional entity to check before using this schedule
+#   condition_state (str)  – state the condition_entity must have (default "on")
 
 # Schimmelschutz (mold protection) – per room
 CONF_HUMIDITY_SENSOR: Final = "humidity_sensor"
