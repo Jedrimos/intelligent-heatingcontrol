@@ -163,16 +163,19 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "window_sensors": room_cfg.get("window_sensors", []),
             # Legacy fixed temps (kept for fallback / sensor-absent scenario)
             "comfort_temp": room_cfg.get("comfort_temp", 21.0),
-            "away_temp_room": room_cfg.get("away_temp_room", 16.0),
-            # Outdoor-regulated offsets & caps (new design)
+            # Outdoor-regulated offsets & caps
             "eco_offset": room_cfg.get("eco_offset", 3.0),
             "sleep_offset": room_cfg.get("sleep_offset", 4.0),
+            "away_offset": room_cfg.get("away_offset", 6.0),
             "eco_max_temp": room_cfg.get("eco_max_temp", 21.0),
             "sleep_max_temp": room_cfg.get("sleep_max_temp", 19.0),
+            "away_max_temp": room_cfg.get("away_max_temp", 18.0),
+            "ha_schedule_off_mode": room_cfg.get("ha_schedule_off_mode", "eco"),
             # Effective computed temps (from coordinator runtime data)
             "comfort_temp_eff": d.get("comfort_temp_eff"),
             "eco_temp_eff": d.get("eco_temp_eff"),
             "sleep_temp_eff": d.get("sleep_temp_eff"),
+            "away_temp_eff": d.get("away_temp_eff"),
             "room_offset": room_cfg.get("room_offset", 0.0),
             "deadband": room_cfg.get("deadband", 0.5),
             "weight": room_cfg.get("weight", 1.0),
