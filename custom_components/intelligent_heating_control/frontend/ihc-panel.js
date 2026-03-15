@@ -836,9 +836,17 @@ class IHCPanel extends HTMLElement {
             <span class="form-hint">Wird für Heizkurve und Sommerautomatik benötigt</span>
           </div>
           <div class="settings-item">
+            <label>Heizungsschalter aktivieren</label>
+            <select class="form-select" id="enable-heating-switch">
+              <option value="false" ${!a.heating_switch ? "selected" : ""}>Deaktiviert</option>
+              <option value="true" ${a.heating_switch ? "selected" : ""}>Aktiviert</option>
+            </select>
+            <span class="form-hint">Aktiviert Heizschalter-Steuerung (z.B. Kesselrelais)</span>
+          </div>
+          <div class="settings-item" id="heating-switch-item" style="${a.heating_switch ? "" : "opacity:0.5"}">
             <label>Heizungsschalter <em style="font-weight:400">(optional)</em></label>
             <input type="text" class="form-input" id="heating-switch"
-              placeholder="switch.heizung (leer = kein Schalter)"
+              placeholder="switch.heizung (nur bei Heizschalter aktiviert)"
               value="${a.heating_switch ?? ''}" list="heating-switch-list" autocomplete="off">
             <datalist id="heating-switch-list">${this._entityOptions(["switch", "input_boolean"])}</datalist>
             <span class="form-hint">Schaltet physisch den Heizkessel ein/aus</span>
@@ -1186,6 +1194,12 @@ class IHCPanel extends HTMLElement {
       </div>
     `;
 
+    // Toggle heating-switch opacity based on enable-heating-switch select
+    content.querySelector("#enable-heating-switch").addEventListener("change", e => {
+      const item = content.querySelector("#heating-switch-item");
+      if (item) item.style.opacity = e.target.value === "true" ? "1" : "0.5";
+    });
+
     // Toggle cooling-switch opacity based on enable-cooling select
     content.querySelector("#enable-cooling").addEventListener("change", e => {
       const item = content.querySelector("#cooling-switch-item");
@@ -1193,9 +1207,10 @@ class IHCPanel extends HTMLElement {
     });
 
     content.querySelector("#save-hardware-settings").addEventListener("click", () => {
+      const heatingEnabled = content.querySelector("#enable-heating-switch").value === "true";
       this._callService("update_global_settings", {
         outdoor_temp_sensor: content.querySelector("#outdoor-sensor").value.trim(),
-        heating_switch:      content.querySelector("#heating-switch").value.trim(),
+        heating_switch:      heatingEnabled ? content.querySelector("#heating-switch").value.trim() : "",
         enable_cooling:      content.querySelector("#enable-cooling").value === "true",
         cooling_switch:      content.querySelector("#cooling-switch").value.trim(),
         weather_entity:      content.querySelector("#weather-entity").value.trim(),
