@@ -30,6 +30,25 @@ const SYSTEM_MODE_LABELS = {
   off: "Aus", away: "Abwesend", vacation: "Urlaub", guest: "Gäste-Modus"
 };
 
+// HA weather condition → German label + emoji icon
+const WEATHER_CONDITIONS = {
+  "clear-night":      { label: "Klare Nacht",           icon: "🌙" },
+  "cloudy":           { label: "Bewölkt",                icon: "☁️" },
+  "exceptional":      { label: "Außergewöhnlich",        icon: "⚠️" },
+  "fog":              { label: "Nebel",                  icon: "🌫️" },
+  "hail":             { label: "Hagel",                  icon: "🌨️" },
+  "lightning":        { label: "Gewitter",               icon: "⛈️" },
+  "lightning-rainy":  { label: "Gewitter m. Regen",      icon: "⛈️" },
+  "partlycloudy":     { label: "Teils bewölkt",          icon: "⛅" },
+  "pouring":          { label: "Starkregen",             icon: "🌧️" },
+  "rainy":            { label: "Regen",                  icon: "🌦️" },
+  "snowy":            { label: "Schnee",                 icon: "❄️" },
+  "snowy-rainy":      { label: "Schneeregen",            icon: "🌨️" },
+  "sunny":            { label: "Sonnig",                 icon: "☀️" },
+  "windy":            { label: "Windig",                 icon: "🌬️" },
+  "windy-variant":    { label: "Stürmisch",              icon: "💨" },
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles
 // ─────────────────────────────────────────────────────────────────────────────
@@ -723,7 +742,7 @@ class IHCPanel extends HTMLElement {
       g.vacation_auto_active  ? `<div class="summer-banner" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9);border-color:#2e7d32;">✈️ <strong>Urlaubs-Modus aktiv</strong></div>` : "",
       g.return_preheat_active ? `<div class="summer-banner" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-color:#1565c0;">🏠 <strong>Rückkehr-Vorheizung aktiv</strong> – Haus wird aufgeheizt</div>` : "",
       g.guest_mode_active     ? `<div class="summer-banner" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0);border-color:#880e4f;">🎉 <strong>Gäste-Modus aktiv</strong>${g.guest_remaining_minutes != null ? ` – noch ${g.guest_remaining_minutes} min` : ""}</div>` : "",
-      g.weather_forecast && g.weather_forecast.cold_warning ? `<div class="summer-banner" style="background:linear-gradient(135deg,#e8eaf6,#c5cae9);border-color:#1a237e;">🥶 <strong>Kältewarnung</strong> – Tiefsttemperatur heute: ${g.weather_forecast.forecast_today_min}°C</div>` : "",
+      g.weather_forecast && g.weather_forecast.cold_warning ? `<div class="summer-banner" style="background:linear-gradient(135deg,#e8eaf6,#c5cae9);border-color:#1a237e;">🥶 <strong>Kältewarnung</strong> – Tiefsttemperatur heute: <strong>${g.weather_forecast.forecast_today_min}°C</strong>${g.weather_forecast.forecast_today_max != null ? ` / max. ${g.weather_forecast.forecast_today_max}°C` : ""}</div>` : "",
     ].filter(Boolean).join("");
 
     // Hero section: 3 key stats prominently displayed
@@ -775,10 +794,18 @@ class IHCPanel extends HTMLElement {
           <div class="status-label">Gestern</div>
           <div class="status-value ${g.energy_today_kwh > g.energy_yesterday_kwh ? "on" : "ok"}" style="font-size:15px">${g.energy_yesterday_kwh} kWh</div>
         </div>` : ""}
-        ${g.weather_forecast ? `<div class="status-item" title="Wettervorhersage">
-          <div class="status-label">Wetter heute</div>
-          <div class="status-value" style="font-size:13px">${g.weather_forecast.condition || "—"}${g.weather_forecast.forecast_today_min != null ? ` ${g.weather_forecast.forecast_today_min}–${g.weather_forecast.forecast_today_max}°` : ""}</div>
-        </div>` : ""}
+        ${g.weather_forecast ? (() => {
+          const wc = WEATHER_CONDITIONS[g.weather_forecast.condition] || { label: g.weather_forecast.condition || "—", icon: "🌡️" };
+          const range = g.weather_forecast.forecast_today_min != null
+            ? `${g.weather_forecast.forecast_today_min}–${g.weather_forecast.forecast_today_max}°C`
+            : "";
+          return `<div class="status-item" title="Wettervorhersage">
+            <div class="status-label">Wetter heute</div>
+            <div class="status-value" style="font-size:18px">${wc.icon}</div>
+            <div style="font-size:11px;color:var(--secondary-text-color);margin-top:2px">${wc.label}</div>
+            ${range ? `<div style="font-size:11px;font-weight:600;color:var(--primary-text-color)">${range}</div>` : ""}
+          </div>`;
+        })() : ""}
       </div>`;
 
     content.innerHTML = `
