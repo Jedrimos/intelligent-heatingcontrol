@@ -1516,7 +1516,9 @@ class IHCPanel extends HTMLElement {
   _collectCurvePoints(content) {
     const outs = [...content.querySelectorAll(".curve-outdoor")].map(i => parseFloat(i.value));
     const tgts = [...content.querySelectorAll(".curve-target")].map(i => parseFloat(i.value));
-    return outs.map((o, i) => ({ outdoor_temp: o, target_temp: tgts[i] }))
+    return outs
+      .map((o, i) => ({ outdoor_temp: o, target_temp: tgts[i] }))
+      .filter(p => !isNaN(p.outdoor_temp) && !isNaN(p.target_temp))
       .sort((a, b) => a.outdoor_temp - b.outdoor_temp);
   }
 

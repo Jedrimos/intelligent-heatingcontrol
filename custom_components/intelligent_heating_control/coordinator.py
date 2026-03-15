@@ -403,10 +403,15 @@ class IHCCoordinator(DataUpdateCoordinator):
         today = date.today()
         in_vacation = vac_start <= today <= vac_end
 
-        if in_vacation and self._system_mode == SYSTEM_MODE_AUTO:
+        # Allow activation from AUTO or presence-triggered AWAY (so airport-departure doesn't block it)
+        can_activate = self._system_mode == SYSTEM_MODE_AUTO or (
+            self._system_mode == SYSTEM_MODE_AWAY and self._presence_away_active
+        )
+        if in_vacation and can_activate:
             _LOGGER.info("IHC: Vacation range active (%s–%s) – switching to vacation mode", start_str, end_str)
             self._system_mode = SYSTEM_MODE_VACATION
             self._vacation_auto_active = True
+            self._presence_away_active = False  # vacation supersedes presence-away
             self.hass.async_create_task(self._async_save_runtime_state())
 
         elif not in_vacation and self._vacation_auto_active:
@@ -1059,6 +1064,14 @@ class IHCCoordinator(DataUpdateCoordinator):
                 window_open=window_open,
                 room_mode=room_mode,
                 manual_temp=self.get_room_manual_temp(room_id),
+            )
+
+            # Warmup tracking: update predictive pre-heat data (Roadmap 1.1)
+            demand = controller_state["demand"]
+            self._update_warmup_tracking(
+                room_id,
+                was_cold=demand > 0,
+                is_now_warm=demand == 0 and current_temp is not None,
             )
 
             # Propagate setpoint to all TRV / climate entities

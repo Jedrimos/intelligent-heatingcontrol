@@ -254,10 +254,14 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
             {k: v for k, v in r.items() if k not in ("schedules",)} for r in coordinator.get_rooms()
         ]
         payload = json.dumps(safe, indent=2, default=str)
-        hass.components.persistent_notification.async_create(
-            message=f"```json\n{payload}\n```",
-            title="IHC Konfigurationsexport",
-            notification_id=f"{DOMAIN}_config_export",
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "message": f"```json\n{payload}\n```",
+                "title": "IHC Konfigurationsexport",
+                "notification_id": f"{DOMAIN}_config_export",
+            },
         )
 
     hass.services.async_register(DOMAIN, SERVICE_ADD_ROOM, handle_add_room)

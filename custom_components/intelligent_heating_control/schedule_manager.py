@@ -16,6 +16,8 @@ WEEKDAY_MAP = {
 def _parse_time(time_str: str) -> time:
     """Parse 'HH:MM' string to time object."""
     parts = time_str.split(":")
+    if len(parts) < 2:
+        raise ValueError(f"Invalid time format: {time_str!r}")
     return time(int(parts[0]), int(parts[1]))
 
 
