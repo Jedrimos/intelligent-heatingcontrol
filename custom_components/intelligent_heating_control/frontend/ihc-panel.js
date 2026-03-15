@@ -1182,6 +1182,19 @@ class IHCPanel extends HTMLElement {
       this._toast("✓ Klimabaustein-Einstellungen gespeichert");
     });
 
+    // Presence tracker overflow toggle
+    const trackerToggle = content.querySelector("#tracker-toggle");
+    if (trackerToggle) {
+      trackerToggle.addEventListener("click", () => {
+        const overflow = content.querySelector("#tracker-overflow");
+        const open = overflow.style.display === "flex";
+        overflow.style.display = open ? "none" : "flex";
+        trackerToggle.textContent = open
+          ? `▸ ${overflow.children.length} weitere Geräte anzeigen`
+          : `▾ Weniger anzeigen`;
+      });
+    }
+
     content.querySelector("#save-presence-settings").addEventListener("click", () => {
       const checked = [...content.querySelectorAll(".presence-cb:checked")].map(cb => cb.value);
       this._callService("update_global_settings", { presence_entities: checked });
@@ -1231,19 +1244,56 @@ class IHCPanel extends HTMLElement {
   // ── Helper: Presence checkboxes from HA states ──────────────────────────────
   _renderPresenceCheckboxes(currentEntities) {
     if (!this._hass) return "";
-    const allEntities = Object.keys(this._hass.states)
-      .filter(id => id.startsWith("person.") || id.startsWith("device_tracker.") || id.startsWith("input_boolean."))
-      .sort();
-    if (!allEntities.length) return "<em style='color:var(--secondary-text-color);font-size:12px'>Keine person.* / device_tracker.* Entitäten gefunden</em>";
-    return allEntities.map(id => {
+
+    const homeStates = new Set(["home", "on"]);
+    const mkChip = id => {
       const state = this._hass.states[id];
       const label = state?.attributes?.friendly_name || id;
+      const isHome = homeStates.has((state?.state || "").toLowerCase());
       const checked = currentEntities.includes(id) ? "checked" : "";
-      return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:4px 8px;border:1px solid var(--divider-color);border-radius:6px">
-        <input type="checkbox" class="presence-cb" value="${id}" ${checked}>
-        <span>${label}</span>
+      const dot = isHome
+        ? `<span style="width:7px;height:7px;border-radius:50%;background:#43a047;flex-shrink:0"></span>`
+        : `<span style="width:7px;height:7px;border-radius:50%;background:#bdbdbd;flex-shrink:0"></span>`;
+      return `<label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;
+          padding:6px 10px;border:1px solid var(--divider-color);border-radius:8px;
+          background:${checked ? "var(--primary-color,#03a9f4)1a" : "transparent"}">
+        <input type="checkbox" class="presence-cb" value="${id}" ${checked} style="margin:0">
+        ${dot}
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+        <span style="font-size:10px;color:var(--secondary-text-color);flex-shrink:0">${isHome ? "zuhause" : "weg"}</span>
       </label>`;
-    }).join("");
+    };
+
+    const persons  = Object.keys(this._hass.states).filter(id => id.startsWith("person.")).sort();
+    const trackers = Object.keys(this._hass.states).filter(id => id.startsWith("device_tracker.")).sort();
+    const booleans = Object.keys(this._hass.states).filter(id => id.startsWith("input_boolean.")).sort();
+
+    if (!persons.length && !trackers.length && !booleans.length)
+      return "<em style='color:var(--secondary-text-color);font-size:12px'>Keine person.* / device_tracker.* Entitäten gefunden</em>";
+
+    const section = (title, ids) => ids.length === 0 ? "" : `
+      <div style="font-size:11px;font-weight:600;color:var(--secondary-text-color);
+          text-transform:uppercase;letter-spacing:.5px;margin:10px 0 5px">${title}</div>
+      <div style="display:flex;flex-direction:column;gap:4px">${ids.map(mkChip).join("")}</div>`;
+
+    // Device-trackers get a collapse toggle if more than 5
+    let trackerBlock = "";
+    if (trackers.length > 0) {
+      const shown  = trackers.slice(0, 5);
+      const hidden = trackers.slice(5);
+      trackerBlock = `
+        <div style="font-size:11px;font-weight:600;color:var(--secondary-text-color);
+            text-transform:uppercase;letter-spacing:.5px;margin:10px 0 5px">Geräte (device_tracker)</div>
+        <div style="display:flex;flex-direction:column;gap:4px">${shown.map(mkChip).join("")}</div>
+        ${hidden.length ? `
+          <div id="tracker-overflow" style="display:none;flex-direction:column;gap:4px">${hidden.map(mkChip).join("")}</div>
+          <button type="button" id="tracker-toggle"
+            style="margin-top:6px;font-size:12px;color:var(--primary-color);background:none;border:none;cursor:pointer;padding:2px 0;text-align:left">
+            ▸ ${hidden.length} weitere Geräte anzeigen
+          </button>` : ""}`;
+    }
+
+    return section("Personen", persons) + trackerBlock + section("Schalter (input_boolean)", booleans);
   }
 
   // ── Helper: datalist options for entity pickers ─────────────────────────────
@@ -1252,7 +1302,13 @@ class IHCPanel extends HTMLElement {
     return Object.keys(this._hass.states)
       .filter(id => !domains.length || domains.some(d => id.startsWith(d + ".")))
       .sort()
-      .map(id => `<option value="${id}">`)
+      .map(id => {
+        const state = this._hass.states[id];
+        const name  = state?.attributes?.friendly_name;
+        // Show "Friendly Name – entity.id" so users can search by name OR id
+        const label = name && name !== id ? `${name} – ${id}` : id;
+        return `<option value="${id}" label="${label}">`;
+      })
       .join("");
   }
 
