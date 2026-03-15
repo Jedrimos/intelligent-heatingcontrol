@@ -231,6 +231,7 @@ class IHCRoomDemandSensor(_IHCBase, SensorEntity):
                 "night_setback": room.get("night_setback", 0.0),
                 "temp_history": room.get("temp_history", []),          # Roadmap 1.1
                 "avg_warmup_minutes": room.get("avg_warmup_minutes"),  # Roadmap 1.1
+                "anomaly": room.get("anomaly"),                        # Roadmap 1.1
             }
         return {}
 

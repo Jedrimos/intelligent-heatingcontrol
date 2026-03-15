@@ -86,35 +86,48 @@ class ScheduleManager:
         """
         Return the next scheduled period if it starts within `within_minutes` from now.
         Used for pre-heat logic: start heating before scheduled start.
+
+        Handles midnight boundary: if the pre-heat window extends past midnight,
+        also checks the first period of the next weekday.
         """
         if now is None:
             now = datetime.now()
 
-        weekday = now.weekday()
         current_time = now.time().replace(second=0, microsecond=0)
+        now_seconds = current_time.hour * 3600 + current_time.minute * 60
 
-        for schedule in self._schedules:
-            days = [WEEKDAY_MAP.get(d, -1) for d in schedule.get("days", [])]
-            if weekday not in days:
-                continue
-            for period in schedule.get("periods", []):
-                try:
-                    start = _parse_time(period["start"])
-                except (KeyError, ValueError):
+        # Determine how many days to check (typically 1, but 2 if window spans midnight)
+        minutes_remaining_today = (24 * 60) - (now_seconds // 60)
+        days_to_check = 2 if within_minutes > minutes_remaining_today else 1
+
+        for day_offset in range(days_to_check):
+            check_weekday = (now.weekday() + day_offset) % 7
+            for schedule in self._schedules:
+                days = [WEEKDAY_MAP.get(d, -1) for d in schedule.get("days", [])]
+                if check_weekday not in days:
                     continue
-                if start <= current_time:
-                    continue
-                # How many minutes until start?
-                start_seconds = start.hour * 3600 + start.minute * 60
-                now_seconds = current_time.hour * 3600 + current_time.minute * 60
-                minutes_until = (start_seconds - now_seconds) / 60
-                if 0 < minutes_until <= within_minutes:
-                    return {
-                        "temperature": float(period.get("temperature", 21.0)),
-                        "offset": float(period.get("offset", 0.0)),
-                        "start": period["start"],
-                        "end": period["end"],
-                    }
+                for period in schedule.get("periods", []):
+                    try:
+                        start = _parse_time(period["start"])
+                    except (KeyError, ValueError):
+                        continue
+                    start_seconds = start.hour * 3600 + start.minute * 60
+                    # Minutes until start, accounting for day_offset
+                    if day_offset == 0:
+                        if start_seconds <= now_seconds:
+                            continue  # already passed today
+                        minutes_until = (start_seconds - now_seconds) / 60
+                    else:
+                        # Period is on the next day
+                        minutes_until = minutes_remaining_today + start_seconds / 60
+
+                    if 0 < minutes_until <= within_minutes:
+                        return {
+                            "temperature": float(period.get("temperature", 21.0)),
+                            "offset": float(period.get("offset", 0.0)),
+                            "start": period["start"],
+                            "end": period["end"],
+                        }
         return None
 
     def get_next_period(self, now: Optional[datetime] = None) -> Optional[dict]:

@@ -466,6 +466,7 @@ class IHCPanel extends HTMLElement {
         weight: state.attributes.weight ?? 1.0,
         schedules: state.attributes.schedules || [],
         next_period: state.attributes.next_period || null,
+        anomaly: state.attributes.anomaly || null,
       };
     });
     // Enrich from demand sensors
@@ -608,8 +609,15 @@ class IHCPanel extends HTMLElement {
           title="${MODE_LABELS[m]}">${MODE_ICONS[m]}</span>`;
       }).join("");
 
+      const anomalyBanner = room.anomaly === "sensor_stuck"
+        ? `<div style="font-size:10px;color:#c62828;background:#fce4ec;border-radius:6px;padding:3px 7px;margin-bottom:6px">⚠️ Sensor liefert konstanten Wert – bitte prüfen</div>`
+        : room.anomaly === "temp_drop"
+        ? `<div style="font-size:10px;color:#e65100;background:#fff3e0;border-radius:6px;padding:3px 7px;margin-bottom:6px">⚠️ Starker Temperaturabfall erkannt</div>`
+        : "";
+
       return `
         <div class="${cls}">
+          ${anomalyBanner}
           <div class="room-name">
             <span>${room.name}</span>
             ${statusBadge}

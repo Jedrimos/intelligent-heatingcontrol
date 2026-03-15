@@ -421,6 +421,28 @@ class IHCCoordinator(DataUpdateCoordinator):
                 history.pop(0)
             self._warmup_start[room_id] = None
 
+    def _detect_sensor_anomaly(self, room_id: str) -> Optional[str]:
+        """
+        Roadmap 1.1 – Anomalie-Erkennung.
+
+        Returns a short anomaly description or None.
+        Checks:
+          - Sensor drift: last 10 readings all identical (stuck value)
+          - Sudden drop: temperature fell > 4 °C in last 3 readings (window open?)
+        """
+        history = list(self._temp_history.get(room_id, []))
+        if len(history) < 3:
+            return None
+        vals = [p["v"] for p in history]
+        # Stuck sensor: last 10 readings (or all available) are identical
+        check = vals[-10:]
+        if len(check) >= 5 and len(set(check)) == 1:
+            return "sensor_stuck"
+        # Sudden temperature drop (>4°C over last 3 readings)
+        if vals[-1] < vals[-3] - 4.0:
+            return "temp_drop"
+        return None
+
     def get_next_schedule_period(self, room_id: str) -> Optional[dict]:
         """Return the next scheduled period for a room (for informational display)."""
         mgr = self._schedule_managers.get(room_id)
@@ -945,6 +967,7 @@ class IHCCoordinator(DataUpdateCoordinator):
                 "temp_history": self.get_temp_history(room_id),     # Roadmap 1.1
                 "avg_warmup_minutes": self.get_avg_warmup_minutes(room_id),
                 "next_period": self.get_next_schedule_period(room_id),  # Roadmap 1.1
+                "anomaly": self._detect_sensor_anomaly(room_id),    # Roadmap 1.1
                 # Ensure night_setback is always present (meta may omit it for mode overrides)
                 "night_setback": 0.0,
                 **meta,
