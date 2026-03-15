@@ -586,6 +586,7 @@ class IHCPanel extends HTMLElement {
       guest_mode_active:         a.guest_mode_active || false,
       guest_remaining_minutes:   a.guest_remaining_minutes != null ? a.guest_remaining_minutes : null,
       weather_forecast:          a.weather_forecast || null,
+      cold_boost:                ea.cold_boost != null ? parseFloat(ea.cold_boost) : 0,
     };
   }
 
@@ -697,9 +698,14 @@ class IHCPanel extends HTMLElement {
         ? `<div style="font-size:10px;color:#1a237e;background:#e8eaf6;border-radius:6px;padding:3px 7px;margin-bottom:6px">💧 Schimmelrisiko – Feuchte ${room.mold.humidity}%${room.mold.dew_point != null ? `, Taupunkt ${room.mold.dew_point}°C` : ""}</div>`
         : "";
 
+      // Override banner: shown when system mode silently ignores the room mode
+      const overrideBanner = systemOverrides
+        ? `<div style="font-size:10px;color:#e65100;background:#fff3e0;border-radius:6px;padding:3px 8px;margin-bottom:6px;display:flex;align-items:center;gap:4px">${overrideLabel} <span style="opacity:.7">– Zimmermodus übersteuert</span></div>`
+        : "";
+
       return `
         <div class="${cls}">
-          ${anomalyBanner}${moldBanner}
+          ${overrideBanner}${anomalyBanner}${moldBanner}
           <div class="room-name">
             <span>${room.name}</span>
             ${statusBadge}
@@ -732,12 +738,20 @@ class IHCPanel extends HTMLElement {
         </div>`;
     }).join("");
 
+    // Which system modes fully override room modes?
+    const OVERRIDE_MODES = ["away", "vacation", "off", "guest"];
+    const systemOverrides = OVERRIDE_MODES.includes(g.system_mode);
+    const overrideLabel = systemOverrides
+      ? ({ away: "🚶 Abwesend", vacation: "✈️ Urlaub", off: "⛔ Aus", guest: "🎉 Gäste" }[g.system_mode] || g.system_mode)
+      : null;
+
     // Build system banners
     const banners = [
       g.summer_mode           ? `<div class="summer-banner">☀️ <strong>Sommerautomatik aktiv</strong> – Heizung gesperrt</div>` : "",
       g.night_setback_active  ? `<div class="summer-banner" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-color:#1565c0;">🌙 <strong>Nachtabsenkung aktiv</strong> – Temperaturen reduziert</div>` : "",
       g.presence_away_active  ? `<div class="summer-banner" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border-color:#e65100;">🚶 <strong>Anwesenheits-Abwesend</strong> – niemand zuhause</div>` : "",
       g.solar_boost > 0       ? `<div class="summer-banner" style="background:linear-gradient(135deg,#fffde7,#fff9c4);border-color:#f9a825;">🌞 <strong>Solarüberschuss</strong> – ${g.solar_power != null ? g.solar_power + " W · " : ""}+${g.solar_boost}°C angehoben</div>` : "",
+      g.cold_boost > 0        ? `<div class="summer-banner" style="background:linear-gradient(135deg,#e8eaf6,#c5cae9);border-color:#1a237e;">🥶 <strong>Kälteboost aktiv</strong> – alle Zimmer +${g.cold_boost}°C angehoben</div>` : "",
       g.energy_price_eco_active ? `<div class="summer-banner" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0);border-color:#c62828;">💶 <strong>Hoher Strompreis</strong> – ${g.energy_price != null ? g.energy_price.toFixed(3) + " €/kWh · " : ""}Eco-Modus aktiv</div>` : "",
       g.vacation_auto_active  ? `<div class="summer-banner" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9);border-color:#2e7d32;">✈️ <strong>Urlaubs-Modus aktiv</strong></div>` : "",
       g.return_preheat_active ? `<div class="summer-banner" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-color:#1565c0;">🏠 <strong>Rückkehr-Vorheizung aktiv</strong> – Haus wird aufgeheizt</div>` : "",
@@ -745,12 +759,27 @@ class IHCPanel extends HTMLElement {
       g.weather_forecast && g.weather_forecast.cold_warning ? `<div class="summer-banner" style="background:linear-gradient(135deg,#e8eaf6,#c5cae9);border-color:#1a237e;">🥶 <strong>Kältewarnung</strong> – Tiefsttemperatur heute: <strong>${g.weather_forecast.forecast_today_min}°C</strong>${g.weather_forecast.forecast_today_max != null ? ` / max. ${g.weather_forecast.forecast_today_max}°C` : ""}</div>` : "",
     ].filter(Boolean).join("");
 
-    // Hero section: 3 key stats prominently displayed
+    // Hero section
     const heatingState = g.heating_active ? "🔥 Heizt" : g.no_switch ? "— kein Schalter" : "✓ Bereit";
     const heatingCls   = g.heating_active ? "heating" : "ok";
-    const modeDisplay  = SYSTEM_MODE_LABELS[g.system_mode] || g.system_mode;
     const demandNum    = g.total_demand != null ? `${g.total_demand} %` : "—";
     const demandCls    = (g.total_demand || 0) > 0 ? "warn" : "ok";
+
+    // System-mode badge color
+    const modeBadgeStyle = {
+      auto:     "background:#e8f5e9;color:#2e7d32",
+      heat:     "background:#fce4ec;color:#c62828",
+      cool:     "background:#e3f2fd;color:#1565c0",
+      away:     "background:#fff3e0;color:#e65100",
+      vacation: "background:#e8f5e9;color:#2e7d32",
+      off:      "background:#f5f5f5;color:#757575",
+      guest:    "background:#fce4ec;color:#880e4f",
+    }[g.system_mode] || "background:#f5f5f5;color:#616161";
+
+    const modeDisplay = SYSTEM_MODE_LABELS[g.system_mode] || g.system_mode;
+    const modeOptions = Object.entries(SYSTEM_MODE_LABELS)
+      .map(([k, v]) => `<option value="${k}" ${g.system_mode === k ? "selected" : ""}>${v}</option>`)
+      .join("");
 
     const heroSection = `
       <div class="overview-hero">
@@ -762,12 +791,19 @@ class IHCPanel extends HTMLElement {
         <div class="hero-card">
           <div class="hero-label">Gesamtanforderung</div>
           <div class="hero-value ${demandCls}">${demandNum}</div>
-          <div class="hero-sub">Modus: ${modeDisplay}</div>
+          <div class="hero-sub">⏱ ${g.heating_runtime_today} min · ${g.energy_today_kwh} kWh</div>
         </div>
-        <div class="hero-card">
-          <div class="hero-label">Energie heute</div>
-          <div class="hero-value">${g.energy_today_kwh} <span style="font-size:16px;font-weight:400">kWh</span></div>
-          <div class="hero-sub">⏱ ${g.heating_runtime_today} min Laufzeit</div>
+        <div class="hero-card" style="justify-content:space-between">
+          <div class="hero-label">Systemmodus</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:18px;font-weight:700;padding:4px 12px;border-radius:20px;${modeBadgeStyle}">${modeDisplay}</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="hero-system-mode" style="flex:1;padding:6px 8px;border-radius:6px;border:1.5px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px">
+              ${modeOptions}
+            </select>
+            <button id="hero-set-mode" style="padding:6px 10px;border-radius:6px;border:none;background:var(--primary-color);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Setzen</button>
+          </div>
         </div>
       </div>`;
 
@@ -819,6 +855,16 @@ class IHCPanel extends HTMLElement {
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--secondary-text-color);margin-bottom:10px">${sortedRooms.length} Zimmer</div>
       <div class="rooms-grid">${roomCards}</div>
     `;
+
+    // Hero system-mode button
+    const heroModeBtn = content.querySelector("#hero-set-mode");
+    if (heroModeBtn) {
+      heroModeBtn.addEventListener("click", () => {
+        const mode = content.querySelector("#hero-system-mode").value;
+        this._callService("set_system_mode", { mode });
+        this._toast(`✓ Systemmodus: ${SYSTEM_MODE_LABELS[mode] || mode}`);
+      });
+    }
 
     // Mode chip clicks
     content.querySelectorAll(".mode-chip[data-room-id]").forEach(chip => {
@@ -942,6 +988,18 @@ class IHCPanel extends HTMLElement {
               value="${a.weather_entity ?? ''}" list="weather-entity-list" autocomplete="off">
             <datalist id="weather-entity-list">${this._entityOptions(["weather"])}</datalist>
             <span class="form-hint">Zeigt Wettervorhersage und Kältewarnung</span>
+          </div>
+          <div class="settings-item">
+            <label>Kälteschwelle (°C)</label>
+            <input type="number" class="form-input" id="weather-cold-threshold"
+              step="0.5" value="${a.weather_cold_threshold ?? 0}">
+            <span class="form-hint">Kältewarnung ab dieser Tiefsttemperatur (Standard: 0°C)</span>
+          </div>
+          <div class="settings-item">
+            <label>Kälteboost (°C)</label>
+            <input type="number" class="form-input" id="weather-cold-boost"
+              step="0.5" min="0" max="5" value="${a.weather_cold_boost ?? 0}">
+            <span class="form-hint">Zieltemperatur aller Zimmer anheben wenn Kältewarnung aktiv (0 = aus)</span>
           </div>
           <div class="settings-item">
             <label>Kühlung aktivieren</label>
@@ -1303,8 +1361,10 @@ class IHCPanel extends HTMLElement {
         heating_switch:      heatingEnabled ? content.querySelector("#heating-switch").value.trim() : "",
         enable_cooling:      content.querySelector("#enable-cooling").value === "true",
         cooling_switch:      content.querySelector("#cooling-switch").value.trim(),
-        weather_entity:      content.querySelector("#weather-entity").value.trim(),
-        controller_mode:     content.querySelector("#controller-mode").value,
+        weather_entity:           content.querySelector("#weather-entity").value.trim(),
+        weather_cold_threshold:   parseFloat(content.querySelector("#weather-cold-threshold").value) || 0,
+        weather_cold_boost:       parseFloat(content.querySelector("#weather-cold-boost").value) || 0,
+        controller_mode:          content.querySelector("#controller-mode").value,
       });
       this._toast("✓ Hardware-Einstellungen gespeichert");
     });

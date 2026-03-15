@@ -139,6 +139,8 @@ from .const import (
     CONF_WEATHER_ENTITY,
     CONF_WEATHER_COLD_THRESHOLD,
     DEFAULT_WEATHER_COLD_THRESHOLD,
+    CONF_WEATHER_COLD_BOOST,
+    DEFAULT_WEATHER_COLD_BOOST,
     CONF_HUMIDITY_SENSOR,
     CONF_MOLD_PROTECTION_ENABLED,
     CONF_MOLD_HUMIDITY_THRESHOLD,
@@ -693,6 +695,22 @@ class IHCCoordinator(DataUpdateCoordinator):
         threshold = float(cfg.get(CONF_ENERGY_PRICE_THRESHOLD, DEFAULT_ENERGY_PRICE_THRESHOLD))
         if price >= threshold:
             return float(cfg.get(CONF_ENERGY_PRICE_ECO_OFFSET, DEFAULT_ENERGY_PRICE_ECO_OFFSET))
+        return 0.0
+
+    def _get_weather_cold_boost(self) -> float:
+        """Return temperature boost (°C) when a cold day is forecast.
+
+        Applies when forecast_today_min ≤ weather_cold_threshold AND
+        weather_cold_boost > 0.  Raises all room targets to pre-compensate
+        for high heat demand on frigid days.
+        """
+        cfg = self.get_config()
+        cold_boost = float(cfg.get(CONF_WEATHER_COLD_BOOST, DEFAULT_WEATHER_COLD_BOOST))
+        if cold_boost <= 0:
+            return 0.0
+        forecast = self._get_weather_forecast()
+        if forecast and forecast.get("cold_warning"):
+            return cold_boost
         return 0.0
 
     def _get_current_energy_price(self) -> Optional[float]:
@@ -1251,6 +1269,7 @@ class IHCCoordinator(DataUpdateCoordinator):
 
         solar_boost = self._get_solar_boost()
         price_eco_offset = self._get_energy_price_eco_offset()
+        cold_boost = self._get_weather_cold_boost()
 
         for room in self.get_rooms():
             room_id = room.get(CONF_ROOM_ID, "")
@@ -1288,6 +1307,11 @@ class IHCCoordinator(DataUpdateCoordinator):
             if mold_boost > 0 and meta.get("source") not in ("frost_protection", "system_away", "system_vacation"):
                 target_temp = min(float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP)), target_temp + mold_boost)
                 meta["mold_boost"] = mold_boost
+
+            # Weather cold boost – raise target on forecasted cold days
+            if cold_boost > 0 and meta.get("source") not in ("frost_protection", "system_away", "system_vacation", "room_off"):
+                target_temp = min(float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP)), target_temp + cold_boost)
+                meta["cold_boost"] = cold_boost
 
             # Update controller state for this room
             controller_state = self._controller.update_room(
@@ -1432,6 +1456,7 @@ class IHCCoordinator(DataUpdateCoordinator):
             "energy_yesterday_kwh": energy_yesterday_kwh,               # Roadmap 2.0
             "efficiency_score": efficiency_score,                       # Roadmap 1.3
             "solar_boost": solar_boost,
+            "cold_boost": cold_boost,
             "solar_power": self._get_solar_power(),
             "energy_price": self._get_current_energy_price(),
             "energy_price_eco_offset": price_eco_offset,

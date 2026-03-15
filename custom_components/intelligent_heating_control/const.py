@@ -245,6 +245,8 @@ DEFAULT_VACATION_RETURN_PREHEAT_DAYS: Final = 0  # disabled
 CONF_WEATHER_ENTITY: Final = "weather_entity"
 CONF_WEATHER_COLD_THRESHOLD: Final = "weather_cold_threshold"  # °C below which cold warning shows
 DEFAULT_WEATHER_COLD_THRESHOLD: Final = 0.0
+CONF_WEATHER_COLD_BOOST: Final = "weather_cold_boost"          # °C added to target when cold warning
+DEFAULT_WEATHER_COLD_BOOST: Final = 0.0                        # 0 = disabled by default
 
 # Schimmelschutz (mold protection) – per room
 CONF_HUMIDITY_SENSOR: Final = "humidity_sensor"

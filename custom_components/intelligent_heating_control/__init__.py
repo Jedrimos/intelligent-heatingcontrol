@@ -243,7 +243,7 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
             # Roadmap 2.0
             "controller_mode", "guest_duration_hours",
             "vacation_return_preheat_days",
-            "weather_entity", "weather_cold_threshold",
+            "weather_entity", "weather_cold_threshold", "weather_cold_boost",
         }
         updates = {k: v for k, v in call.data.items() if k in allowed}
         if updates:
