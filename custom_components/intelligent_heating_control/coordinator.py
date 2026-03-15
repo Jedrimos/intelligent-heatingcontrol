@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from homeassistant.core import HomeAssistant, callback
@@ -123,6 +123,9 @@ from .const import (
     SYSTEM_MODE_OFF,
     SYSTEM_MODE_AWAY,
     SYSTEM_MODE_VACATION,
+    # Roadmap 1.2 – Vacation assistant
+    CONF_VACATION_START,
+    CONF_VACATION_END,
 )
 from .heating_curve import HeatingCurve
 from .schedule_manager import ScheduleManager
@@ -157,6 +160,9 @@ class IHCCoordinator(DataUpdateCoordinator):
         # Presence-based auto-away
         self._presence_away_active: bool = False  # True when auto-away triggered by presence
 
+        # Roadmap 1.2 – Vacation assistant: track auto-vacation mode
+        self._vacation_auto_active: bool = False  # True when activated by date range
+
         # Energy / runtime tracking
         self._heating_started_at: Optional[datetime] = None
         self._heating_runtime_today: float = 0.0       # total seconds today
@@ -164,8 +170,13 @@ class IHCCoordinator(DataUpdateCoordinator):
         self._room_runtime_today: Dict[str, float] = {}      # room_id → seconds today
         self._runtime_day: int = datetime.now().day           # to detect day rollover
 
+        # Flag: suppress the update_listener reload for internal option writes
+        self._suppress_reload: bool = False
+
         # Roadmap 1.1 – Temperature history per room (deque of (ts_iso, temp) tuples)
         self._temp_history: Dict[str, deque] = {}
+        # Track when history was last persisted (save at most once per hour)
+        self._history_last_saved: Optional[datetime] = None
 
         # Roadmap 1.1 – Warmup tracking (for predictive pre-heating)
         self._warmup_start: Dict[str, Optional[datetime]] = {}    # room_id → when heat request started
@@ -210,13 +221,17 @@ class IHCCoordinator(DataUpdateCoordinator):
         )
 
     async def async_load_runtime_state(self) -> None:
-        """Load persisted runtime state (system_mode, room_modes, manual temps) from Store."""
+        """Load persisted runtime state from Store."""
         data = await self._store.async_load()
         if not data:
             return
         self._system_mode = data.get("system_mode", SYSTEM_MODE_AUTO)
         self._room_modes = data.get("room_modes", {})
         self._room_manual_temps = data.get("room_manual_temps", {})
+        self._vacation_auto_active = data.get("vacation_auto_active", False)
+        # Restore temperature history (Roadmap 1.1 – persisted across restarts)
+        for room_id, entries in data.get("temp_history", {}).items():
+            self._temp_history[room_id] = deque(entries, maxlen=CONF_TEMP_HISTORY_SIZE)
 
     async def _async_save_runtime_state(self) -> None:
         """Persist current runtime state to Store."""
@@ -224,6 +239,9 @@ class IHCCoordinator(DataUpdateCoordinator):
             "system_mode": self._system_mode,
             "room_modes": self._room_modes,
             "room_manual_temps": self._room_manual_temps,
+            "vacation_auto_active": self._vacation_auto_active,
+            # Persist temperature history so sparklines survive HA restarts
+            "temp_history": {rid: list(hist) for rid, hist in self._temp_history.items()},
         })
 
     def get_config(self) -> dict:
@@ -360,6 +378,75 @@ class IHCCoordinator(DataUpdateCoordinator):
             self.hass.async_create_task(self._async_save_runtime_state())
 
     # ------------------------------------------------------------------
+    # Roadmap 1.2 – Vacation assistant
+    # ------------------------------------------------------------------
+
+    def _update_vacation_auto_mode(self) -> None:
+        """
+        Auto-switch to VACATION mode when the current date is within the configured
+        vacation date range, and restore AUTO when the range ends.
+        Respects manual mode changes: only activates/deactivates if system is in AUTO
+        (or already in auto-vacation).
+        """
+        cfg = self.get_config()
+        start_str = cfg.get(CONF_VACATION_START, "")
+        end_str = cfg.get(CONF_VACATION_END, "")
+        if not start_str or not end_str:
+            return  # no vacation range configured
+
+        try:
+            vac_start = date.fromisoformat(start_str)
+            vac_end = date.fromisoformat(end_str)
+        except ValueError:
+            return
+
+        today = date.today()
+        in_vacation = vac_start <= today <= vac_end
+
+        # Allow activation from AUTO or presence-triggered AWAY (so airport-departure doesn't block it)
+        can_activate = self._system_mode == SYSTEM_MODE_AUTO or (
+            self._system_mode == SYSTEM_MODE_AWAY and self._presence_away_active
+        )
+        if in_vacation and can_activate:
+            _LOGGER.info("IHC: Vacation range active (%s–%s) – switching to vacation mode", start_str, end_str)
+            self._system_mode = SYSTEM_MODE_VACATION
+            self._vacation_auto_active = True
+            self._presence_away_active = False  # vacation supersedes presence-away
+            self.hass.async_create_task(self._async_save_runtime_state())
+
+        elif not in_vacation and self._vacation_auto_active:
+            _LOGGER.info("IHC: Vacation range ended – restoring auto mode")
+            self._system_mode = SYSTEM_MODE_AUTO
+            self._vacation_auto_active = False
+            self.hass.async_create_task(self._async_save_runtime_state())
+
+    def set_vacation_range(self, start: str, end: str) -> None:
+        """Store vacation start/end dates and immediately evaluate."""
+        self.hass.async_create_task(self.async_update_global_settings({
+            CONF_VACATION_START: start,
+            CONF_VACATION_END: end,
+        }))
+
+    def clear_vacation_range(self) -> None:
+        """Clear vacation date range and restore auto mode if in auto-vacation."""
+        if self._vacation_auto_active:
+            self._system_mode = SYSTEM_MODE_AUTO
+            self._vacation_auto_active = False
+        self.hass.async_create_task(self.async_update_global_settings({
+            CONF_VACATION_START: "",
+            CONF_VACATION_END: "",
+        }))
+
+    def get_vacation_range(self) -> dict:
+        """Return the configured vacation date range."""
+        cfg = self.get_config()
+        return {
+            "start": cfg.get(CONF_VACATION_START, ""),
+            "end": cfg.get(CONF_VACATION_END, ""),
+            "active": self._vacation_auto_active,
+        }
+
+    # ------------------------------------------------------------------
     # Night setback
     # ------------------------------------------------------------------
 
@@ -410,6 +497,35 @@ class IHCCoordinator(DataUpdateCoordinator):
             if len(history) > 10:
                 history.pop(0)
             self._warmup_start[room_id] = None
+
+    def _detect_sensor_anomaly(self, room_id: str) -> Optional[str]:
+        """
+        Roadmap 1.1 – Anomalie-Erkennung.
+
+        Returns a short anomaly description or None.
+        Checks:
+          - Sensor drift: last 10 readings all identical (stuck value)
+          - Sudden drop: temperature fell > 4 °C in last 3 readings (window open?)
+        """
+        history = list(self._temp_history.get(room_id, []))
+        if len(history) < 3:
+            return None
+        vals = [p["v"] for p in history]
+        # Stuck sensor: last 10 readings (or all available) are identical
+        check = vals[-10:]
+        if len(check) >= 5 and len(set(check)) == 1:
+            return "sensor_stuck"
+        # Sudden temperature drop (>4°C over last 3 readings)
+        if vals[-1] < vals[-3] - 4.0:
+            return "temp_drop"
+        return None
+
+    def get_next_schedule_period(self, room_id: str) -> Optional[dict]:
+        """Return the next scheduled period for a room (for informational display)."""
+        mgr = self._schedule_managers.get(room_id)
+        if mgr is None:
+            return None
+        return mgr.get_next_period()
 
     def get_avg_warmup_minutes(self, room_id: str) -> Optional[float]:
         """Average warmup duration in minutes for predictive pre-heating."""
@@ -595,6 +711,38 @@ class IHCCoordinator(DataUpdateCoordinator):
         if started is not None:
             total += (datetime.now() - started).total_seconds()
         return round(total / 60.0, 1)
+
+    # ------------------------------------------------------------------
+    # Roadmap 1.3 – Heizungsoptimierungs-Score
+    # ------------------------------------------------------------------
+
+    def calculate_efficiency_score(self, outdoor_temp: Optional[float]) -> Optional[int]:
+        """
+        Calculate a daily heating efficiency score (0–100).
+
+        Higher = more efficient. Based on the ratio of actual runtime to the
+        expected runtime for the current outdoor temperature.
+
+        Formula:
+          expected_hours = max(0.5, (20 - outdoor_temp) / 5)   [h/day]
+          actual_hours   = runtime_today_minutes / 60
+          ratio          = expected_hours / actual_hours
+          score          = clamp(round(ratio * 100), 0, 100)
+
+        Interpretation:
+          100 – heating exactly as long as expected for this outdoor temp
+          >100 – heating less than expected (very efficient or house well insulated)
+           <100 – heating more than expected (less efficient)
+        Score is None if no outdoor temp or no runtime data yet.
+        """
+        if outdoor_temp is None:
+            return None
+        actual_h = self.get_heating_runtime_today_minutes() / 60.0
+        if actual_h < 0.05:
+            return None  # too early in the day for a meaningful score
+        expected_h = max(0.5, (20.0 - outdoor_temp) / 5.0)
+        ratio = expected_h / actual_h
+        return min(100, max(0, round(ratio * 100)))
 
     # ------------------------------------------------------------------
     # Temperature calculation logic
@@ -853,6 +1001,15 @@ class IHCCoordinator(DataUpdateCoordinator):
         # Presence-based auto-away
         self._update_presence_auto_away()
 
+        # Vacation assistant: auto-activate/deactivate based on date range (Roadmap 1.2)
+        self._update_vacation_auto_mode()
+
+        # Persist temperature history once per hour (survives HA restarts)
+        now = datetime.now()
+        if self._history_last_saved is None or (now - self._history_last_saved).total_seconds() >= 3600:
+            self._history_last_saved = now
+            self.hass.async_create_task(self._async_save_runtime_state())
+
         outdoor_temp = self._get_outdoor_temp()
         curve_target = (
             self._heating_curve.get_target_temp(outdoor_temp)
@@ -882,6 +1039,9 @@ class IHCCoordinator(DataUpdateCoordinator):
             # Update temperature history (Roadmap 1.1)
             self._update_temp_history(room_id, current_temp)
 
+            # Room-level presence check (Roadmap 1.2 – exposed to UI)
+            room_presence_active = self._check_room_presence(room)
+
             target_temp, meta = self._calculate_target_temp(room, outdoor_temp)
 
             # Apply solar boost (Roadmap 1.3)
@@ -906,6 +1066,14 @@ class IHCCoordinator(DataUpdateCoordinator):
                 manual_temp=self.get_room_manual_temp(room_id),
             )
 
+            # Warmup tracking: update predictive pre-heat data (Roadmap 1.1)
+            demand = controller_state["demand"]
+            self._update_warmup_tracking(
+                room_id,
+                was_cold=demand > 0,
+                is_now_warm=demand == 0 and current_temp is not None,
+            )
+
             # Propagate setpoint to all TRV / climate entities
             if not window_open and room_mode != ROOM_MODE_OFF:
                 self._set_valve_entities(room, target_temp)
@@ -921,6 +1089,11 @@ class IHCCoordinator(DataUpdateCoordinator):
                 "boost_remaining": self.get_boost_remaining_minutes(room_id),
                 "temp_history": self.get_temp_history(room_id),     # Roadmap 1.1
                 "avg_warmup_minutes": self.get_avg_warmup_minutes(room_id),
+                "next_period": self.get_next_schedule_period(room_id),  # Roadmap 1.1
+                "anomaly": self._detect_sensor_anomaly(room_id),    # Roadmap 1.1
+                "room_presence_active": room_presence_active,       # Roadmap 1.2
+                # Ensure night_setback is always present (meta may omit it for mode overrides)
+                "night_setback": 0.0,
                 **meta,
             }
 
@@ -952,10 +1125,11 @@ class IHCCoordinator(DataUpdateCoordinator):
 
         night_setback_active = self._is_night_setback_active()
 
-        # Roadmap 1.3 – Energy cost estimate
+        # Roadmap 1.3 – Energy cost estimate + efficiency score
         cfg = self.get_config()
         boiler_kw = float(cfg.get(CONF_BOILER_KW, DEFAULT_BOILER_KW))
         energy_today_kwh = round(self.get_heating_runtime_today_minutes() / 60.0 * boiler_kw, 2)
+        efficiency_score = self.calculate_efficiency_score(outdoor_temp)
 
         return {
             "outdoor_temp": outdoor_temp,
@@ -967,9 +1141,12 @@ class IHCCoordinator(DataUpdateCoordinator):
             "summer_mode": summer_mode,
             "night_setback_active": night_setback_active,
             "presence_away_active": self._presence_away_active,
+            "vacation_auto_active": self._vacation_auto_active,         # Roadmap 1.2
+            "vacation_range": self.get_vacation_range(),                # Roadmap 1.2
             "system_mode": self._system_mode,
             "heating_runtime_today": self.get_heating_runtime_today_minutes(),
             "energy_today_kwh": energy_today_kwh,
+            "efficiency_score": efficiency_score,                       # Roadmap 1.3
             "solar_boost": solar_boost,
             "solar_power": self._get_solar_power(),
             "energy_price": self._get_current_energy_price(),
@@ -1015,7 +1192,7 @@ class IHCCoordinator(DataUpdateCoordinator):
         await self.async_request_refresh()
 
     async def async_update_room(self, room_id: str, updates: dict) -> None:
-        """Update a room's configuration."""
+        """Update a room's configuration (no entity changes → no reload needed)."""
         new_options = dict(self._config_entry.options)
         rooms = list(new_options.get(CONF_ROOMS, []))
         for i, room in enumerate(rooms):
@@ -1023,18 +1200,26 @@ class IHCCoordinator(DataUpdateCoordinator):
                 rooms[i] = {**room, **updates}
                 break
         new_options[CONF_ROOMS] = rooms
-        self.hass.config_entries.async_update_entry(
-            self._config_entry, options=new_options
-        )
+        self._suppress_reload = True
+        try:
+            self.hass.config_entries.async_update_entry(
+                self._config_entry, options=new_options
+            )
+        finally:
+            self._suppress_reload = False
         self._rebuild_from_config()
         await self.async_request_refresh()
 
     async def async_update_global_settings(self, updates: dict) -> None:
-        """Update global settings (threshold, curve, etc.)."""
+        """Update global settings (threshold, curve, etc.) – no entity changes → no reload."""
         new_options = dict(self._config_entry.options)
         new_options.update(updates)
-        self.hass.config_entries.async_update_entry(
-            self._config_entry, options=new_options
-        )
+        self._suppress_reload = True
+        try:
+            self.hass.config_entries.async_update_entry(
+                self._config_entry, options=new_options
+            )
+        finally:
+            self._suppress_reload = False
         self._rebuild_from_config()
         await self.async_request_refresh()

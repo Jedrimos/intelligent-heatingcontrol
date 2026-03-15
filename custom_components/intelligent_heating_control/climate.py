@@ -109,12 +109,12 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
     @property
     def current_temperature(self) -> Optional[float]:
         d = self._room_data
-        return d["current_temp"] if d else None
+        return d.get("current_temp") if d else None
 
     @property
     def target_temperature(self) -> Optional[float]:
         d = self._room_data
-        return d["target_temp"] if d else None
+        return d.get("target_temp") if d else None
 
     @property
     def hvac_mode(self) -> HVACMode:
@@ -131,9 +131,10 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
         if d.get("room_mode") == ROOM_MODE_OFF:
             return HVACAction.OFF
         demand = d.get("demand", 0)
-        if demand > 0 and self.coordinator.data.get("heating_active"):
+        data = self.coordinator.data
+        if data and demand > 0 and data.get("heating_active"):
             return HVACAction.HEATING
-        if self.coordinator.data and self.coordinator.data.get("cooling_active"):
+        if data and data.get("cooling_active"):
             return HVACAction.COOLING
         return HVACAction.IDLE
 
@@ -168,6 +169,8 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "deadband": room_cfg.get("deadband", 0.5),
             "weight": room_cfg.get("weight", 1.0),
             "schedules": room_cfg.get("schedules", []),
+            "next_period": d.get("next_period"),
+            "anomaly": d.get("anomaly"),
         }
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
