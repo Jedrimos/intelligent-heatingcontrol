@@ -1,93 +1,162 @@
 # CLAUDE.md – Entwicklungsregeln für Intelligent Heating Control
 
-## Kritische Regeln – IMMER einhalten
+## Analyse: Woher kamen die Bugs der letzten Stunden?
 
-### Python-Backend
+Alle Bugs hatten **ein einziges Muster**: Eine Änderung wurde an Stelle A gemacht,
+aber die abhängige Stelle B wurde vergessen. Die Bugs waren keine Denkfehler –
+sie waren fehlende "zweite Schritte".
 
-1. **Konstanten-Konsistenz**: Jede Konstante die in `const.py` definiert wird, muss an ALLEN folgenden Stellen synchron gehalten werden:
-   - `const.py` (Definition)
-   - `coordinator.py` (Import + Verwendung)
-   - `config_flow.py` (Import + Formulare + Speichern)
-   - `climate.py` (Import + extra_state_attributes)
-   - Vor dem Löschen einer Konstante: `grep -rn "CONST_NAME" .` ausführen!
+| Bug | Ursache |
+|-----|---------|
+| `CONF_WINDOW_OPEN_TEMP` Import-Crash in HA | In `const.py` gelöscht, aber `coordinator.py` importierte es noch |
+| `enable-heating-switch` JS-Fehler | HTML-Element entfernt, aber `querySelector` im save-handler blieb |
+| Zeitpläne/Kalender Switch-Case blieb | Tab aus HTML entfernt, aber `case` in `_renderTabContent()` blieb |
+| Add-Room fehlte CO₂ + Presence-Feld | Felder im Edit-Modal ergänzt, aber Add-Modal nie synchronisiert |
+| `<select>` hatte Klasse `form-input` | Aus `<input>`-Template kopiert ohne Klasse anzupassen |
+| Float statt Int für Reaktionszeiten | Frontend: `parseFloat()`, Backend: `int()` – nie abgeglichen |
 
-2. **Vor dem Löschen einer CONF_/DEFAULT_-Konstante immer prüfen**:
-   ```bash
-   grep -rn "CONF_XYZ\|DEFAULT_XYZ" custom_components/ --include="*.py"
-   ```
-   Erst löschen wenn alle Referenzen entfernt sind.
+**Lösung**: Vor jedem Commit die Checklisten unten durchgehen.
 
-3. **Import-Fehler vermeiden**: Nach jeder Änderung an `const.py` prüfen ob alle Importe in `coordinator.py`, `config_flow.py`, `climate.py` noch gültig sind.
+---
 
-4. **Neue Konstanten**: Wenn eine neue CONF_* Konstante hinzugefügt wird:
-   - In `const.py` definieren
-   - In `config_flow.py` importieren + in den Formularen anzeigen + im save-handler speichern
-   - In `climate.py` importieren + in `extra_state_attributes` zurückgeben
-   - In `coordinator.py` importieren + in der Logik verwenden
+## Checklisten nach Änderungstyp
 
-### JavaScript-Frontend (ihc-panel.js)
-
-5. **Element-IDs konsistent**: HTML-IDs in Templates müssen mit `querySelector("#id")` im save-handler übereinstimmen. Wenn ein Element entfernt wird, den save-handler ebenfalls anpassen.
-
-6. **Neue Felder im Add-Room-Modal** müssen auch im Edit-Room-Modal vorhanden sein (und umgekehrt). Beide haben eigene save-handler.
-
-7. **Entfernte Tabs aus dem switch entfernen**: Wenn ein Tab aus dem Tab-Bar entfernt wird, auch den `case` in `_renderTabContent()` entfernen.
-
-8. **querySelector mit `?.` für optionale Elemente**: Wenn ein Element nicht in jedem Kontext vorhanden ist, immer `querySelector("#id")?.value` verwenden.
-
-## Workflow
-
-### Vor jedem Commit
+### Wenn eine Konstante aus `const.py` gelöscht oder umbenannt wird
 
 ```bash
-# Python-Syntax prüfen
+# PFLICHT vor dem Löschen: alle Referenzen suchen
+grep -rn "CONF_XYZ\|DEFAULT_XYZ" custom_components/ --include="*.py"
+```
+
+Alle gefundenen Stellen müssen **im gleichen Commit** bereinigt werden:
+- [ ] `const.py` – Definition entfernt
+- [ ] `coordinator.py` – Import + alle Verwendungen entfernt
+- [ ] `config_flow.py` – Import + Formular + save-handler bereinigt
+- [ ] `climate.py` – Import + `extra_state_attributes` bereinigt
+
+### Wenn eine Konstante in `const.py` neu hinzugefügt wird
+
+- [ ] `const.py` – Definition mit `CONF_` und `DEFAULT_` Wert
+- [ ] `config_flow.py` – Import, im Formular anzeigen, im save-handler `int()`/`float()`/`str()` speichern
+- [ ] `climate.py` – Import, in `extra_state_attributes` zurückgeben mit korrektem Fallback-Typ
+- [ ] `coordinator.py` – Import, in der Logik verwenden
+
+### Wenn ein HTML-Element im Frontend entfernt oder umbenannt wird
+
+Für jede entfernte `id="foo"`:
+- [ ] Suche alle `querySelector("#foo")` und `#foo` im JS → entfernen oder anpassen
+- [ ] Prüfe ob Event-Listener (`addEventListener`) für dieses Element existieren → entfernen
+
+```bash
+grep -n "foo" custom_components/intelligent_heating_control/frontend/ihc-panel.js
+```
+
+### Wenn ein Tab aus der Tab-Bar entfernt wird
+
+Beide Stellen sind immer gemeinsam zu ändern:
+- [ ] HTML: `<div class="tab" data-tab="xyz">` entfernen
+- [ ] JS: `case "xyz": this._renderXyz(content); break;` in `_renderTabContent()` entfernen
+- [ ] JS: Auto-Refresh-Timer prüfen (suche nach `this._activeTab === "xyz"`)
+
+### Wenn ein Feld zu einem Modal hinzugefügt wird
+
+Add-Room und Edit-Room Modal müssen **immer synchron** bleiben:
+- [ ] Feld im `_showAddRoomModal()` HTML ergänzt
+- [ ] Feld im `_showAddRoomModal()` save-handler ergänzt (mit `?.value` für neue Felder)
+- [ ] Feld im `_showEditRoomModal()` HTML ergänzt (mit Vorbelgung aus `room.xyz`)
+- [ ] Feld im `_showEditRoomModal()` save-handler ergänzt
+
+### Wenn Typen zwischen Frontend und Backend ausgetauscht werden
+
+| Python-Typ | Frontend → Backend | Backend → Frontend |
+|------------|--------------------|--------------------|
+| `int` | `parseInt(val, 10)` | `?? 0` |
+| `float` | `parseFloat(val)` | `?? 0.0` |
+| `bool` | `val === "true"` | `!== false` |
+| `str` | `.value.trim()` | `\|\| ""` |
+| `list` | `.split(",").map(s=>s.trim()).filter(Boolean)` | `\|\| []` |
+
+Niemals `parseFloat()` für Werte verwenden die der Backend als `int` erwartet (z.B. Sekunden, Minuten, ppm).
+
+---
+
+## Pflicht-Checks vor jedem Commit
+
+```bash
+cd /home/user/intelligent-heatingcontroll
+
+# 1. Python-Syntax aller geänderten Dateien prüfen
 python3 -m py_compile custom_components/intelligent_heating_control/const.py
 python3 -m py_compile custom_components/intelligent_heating_control/coordinator.py
 python3 -m py_compile custom_components/intelligent_heating_control/config_flow.py
 python3 -m py_compile custom_components/intelligent_heating_control/climate.py
 
-# Verwaiste Referenzen suchen
-grep -rn "CONF_WINDOW_OPEN_TEMP\|DEFAULT_WINDOW_OPEN_TEMP" custom_components/ --include="*.py"
+# 2. Keine verwaisten Referenzen auf gelöschte Konstanten
+grep -rn "CONF_WINDOW_OPEN_TEMP" custom_components/ --include="*.py"
+# → muss leer sein
+
+# 3. Alle querySelector ohne ?. auf tatsächlich vorhandene Elemente prüfen
+# (bei Zweifeln: ?.value statt .value verwenden)
+
+# 4. git diff lesen und für jede Löschung prüfen: "Wo wird das noch verwendet?"
+git diff --stat
 ```
 
-### Branch-Regeln
-
-- Entwicklungs-Branch: `claude/hacs-heating-control-plugin-NXmK3`
-- Niemals direkt auf `main` pushen
-- Push-Befehl: `git push -u origin claude/hacs-heating-control-plugin-NXmK3`
+---
 
 ## Architektur
 
 ### Datenfluss
 ```
-config_flow.py (UI-Konfiguration)
-    → options (HA config_entries)
-    → coordinator.py (liest options, berechnet Logik)
-    → climate.py (extra_state_attributes = was das Frontend sieht)
-    → ihc-panel.js (liest state.attributes, zeigt UI)
-    → callService() → coordinator.py (verarbeitet Service-Calls)
+config_flow.py  →  HA options  →  coordinator.py  →  climate.py  →  ihc-panel.js
+   (UI-Config)                    (Logik/Berechnung)  (Attribute)    (Frontend)
+                                        ↑
+                              callService() vom Frontend
 ```
 
-### Wichtige Service-Calls (Frontend → Backend)
-- `add_room` / `update_room` / `remove_room` – Zimmerverwaltung
-- `set_room_mode` – Zimmermodus setzen
-- `update_global_settings` – Globale Einstellungen
-- `boost_room` – Boost aktivieren/deaktivieren
-- `set_system_mode` – Systemmodus
+### Welche Datei ist wofür zuständig
 
-### Zeitpläne
-- IHC-Zeitpläne: `update_room` mit `schedules: [{ days: [...], periods: [...] }]`
-- HA-Zeitpläne: `update_room` mit `ha_schedules: [{ entity, mode, condition_entity, condition_state }]`
-- Zeitpläne werden in `_editingSchedules[entityId]` gepuffert bis gespeichert
-- Nach Import: `delete this._editingSchedules[entityId]` damit neu geladen wird
+| Datei | Zuständigkeit |
+|-------|--------------|
+| `const.py` | Alle Konstanten-Definitionen. Keine Logik. |
+| `coordinator.py` | Heizlogik, Berechnung, Service-Handler |
+| `config_flow.py` | HA-Konfigurationsflow (Setup + Options) |
+| `climate.py` | Climate-Entität, `extra_state_attributes` (Frontend-Daten) |
+| `ihc-panel.js` | Komplettes Frontend, 1 Datei, Web Components |
 
-### Tab-Struktur (Frontend)
-- `🏠 Dashboard` → `_renderOverview()` – Zimmer-Kacheln + System-Status
-- `🚪 Zimmer` → `_renderRooms()` – Liste + Zimmer-Detail (Zeitplan, Kalender als Sub-Tabs)
-- `📊 Übersicht` → `_renderDiagnose()` – Statistiken, Messwerte
-- `⚙️ Einstellungen` → `_renderSettings()` – Globale Konfiguration
-- `📈 Heizkurve` → `_renderCurve()` – Heizkurven-Editor
+### Tab-Struktur (Frontend, Stand nach letztem Refactor)
+- `🏠 Dashboard` → `_renderOverview()`
+- `🚪 Zimmer` → `_renderRooms()` → bei Zimmer-Auswahl → `_renderRoomDetail()`
+  - Sub-Tab `📅 Zeitplan` → `_renderRoomScheduleInline(room, container)`
+  - Sub-Tab `🗓️ Wochenansicht` → `_renderRoomCalendarInline(room, container)`
+- `📊 Übersicht` → `_renderDiagnose()`
+- `⚙️ Einstellungen` → `_renderSettings()`
+- `📈 Heizkurve` → `_renderCurve()`
 
-### Zimmer-Detail Sub-Tabs
-- `📅 Zeitplan` → `_renderRoomScheduleInline(room, container)`
-- `🗓️ Wochenansicht` → `_renderRoomCalendarInline(room, container)`
+### State-Variablen im Frontend
+```javascript
+this._activeTab         // aktueller Haupt-Tab
+this._selectedRoom      // entity_id des ausgewählten Zimmers (null = Listenansicht)
+this._selectedRoomTab   // "schedule" | "calendar"
+this._editingSchedules  // { [entityId]: schedules[] } – gepuffert bis Speichern
+this._modalOpen         // true wenn ein Modal offen ist
+```
+
+### Service-Calls (Frontend → Backend)
+```javascript
+_callService("add_room",             { name, temp_sensor, valve_entities, ... })
+_callService("update_room",          { id, schedules, ha_schedules, ... })
+_callService("remove_room",          { id })
+_callService("set_room_mode",        { id, mode })
+_callService("boost_room",           { id, duration_minutes, temp?, cancel? })
+_callService("update_global_settings", { outdoor_temp_sensor, controller_mode, ... })
+_callService("set_system_mode",      { mode })
+_callService("reset_stats",          {})
+_callService("deactivate_guest_mode",{})
+```
+
+### Branch & Push
+```bash
+git push -u origin claude/hacs-heating-control-plugin-NXmK3
+```
+Niemals auf `main` pushen.
