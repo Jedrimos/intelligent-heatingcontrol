@@ -36,6 +36,16 @@ from .const import (
     ATTR_WINDOW_OPEN,
     ATTR_ROOM_MODE,
     ATTR_OFFSET,
+    CONF_ABSOLUTE_MIN_TEMP,
+    CONF_ROOM_QM,
+    CONF_ROOM_PREHEAT_MINUTES,
+    CONF_WINDOW_REACTION_TIME,
+    CONF_WINDOW_CLOSE_DELAY,
+    DEFAULT_ABSOLUTE_MIN_TEMP,
+    DEFAULT_ROOM_QM,
+    DEFAULT_ROOM_PREHEAT_MINUTES,
+    DEFAULT_WINDOW_REACTION_TIME,
+    DEFAULT_WINDOW_CLOSE_DELAY,
 )
 from .coordinator import IHCCoordinator
 
@@ -180,6 +190,14 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "room_offset": room_cfg.get("room_offset", 0.0),
             "deadband": room_cfg.get("deadband", 0.5),
             "weight": room_cfg.get("weight", 1.0),
+            # Per-room advanced settings
+            "absolute_min_temp": room_cfg.get(CONF_ABSOLUTE_MIN_TEMP, DEFAULT_ABSOLUTE_MIN_TEMP),
+            "room_qm": room_cfg.get(CONF_ROOM_QM, DEFAULT_ROOM_QM),
+            "room_preheat_minutes": room_cfg.get(CONF_ROOM_PREHEAT_MINUTES, DEFAULT_ROOM_PREHEAT_MINUTES),
+            "window_reaction_time": room_cfg.get(CONF_WINDOW_REACTION_TIME, DEFAULT_WINDOW_REACTION_TIME),
+            "window_close_delay": room_cfg.get(CONF_WINDOW_CLOSE_DELAY, DEFAULT_WINDOW_CLOSE_DELAY),
+            # Derived effective weight (from qm if weight is default)
+            "effective_weight": d.get("effective_weight", room_cfg.get("weight", 1.0)),
             "schedules": room_cfg.get("schedules", []),
             "ha_schedules": room_cfg.get("ha_schedules", []),
             "ha_schedule_blocks": d.get("ha_schedule_blocks", {}),

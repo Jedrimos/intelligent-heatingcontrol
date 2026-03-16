@@ -646,6 +646,13 @@ class IHCPanel extends HTMLElement {
         boost_default_duration: state.attributes.boost_default_duration ?? 60,
         // HA schedule blocks (from schedule.* entity config entries)
         ha_schedule_blocks: state.attributes.ha_schedule_blocks || {},
+        // Per-room advanced settings
+        absolute_min_temp: state.attributes.absolute_min_temp ?? 15,
+        room_qm: state.attributes.room_qm ?? 0,
+        room_preheat_minutes: state.attributes.room_preheat_minutes ?? -1,
+        window_reaction_time: state.attributes.window_reaction_time ?? 30,
+        window_close_delay: state.attributes.window_close_delay ?? 0,
+        effective_weight: state.attributes.effective_weight ?? state.attributes.weight ?? 1.0,
       };
     });
     // Enrich from demand sensors
@@ -1368,11 +1375,14 @@ class IHCPanel extends HTMLElement {
       </details>` : ""}
     `;
 
-    content.querySelector("#diag-set-system-mode").addEventListener("click", () => {
-      const mode = content.querySelector("#diag-system-mode-select").value;
-      this._callService("set_system_mode", { mode });
-      this._toast(`✓ Modus: ${SYSTEM_MODE_LABELS[mode] || mode}`);
-    });
+    const setSystemModeBtn = content.querySelector("#diag-set-system-mode");
+    if (setSystemModeBtn) {
+      setSystemModeBtn.addEventListener("click", () => {
+        const mode = content.querySelector("#diag-system-mode-select").value;
+        this._callService("set_system_mode", { mode });
+        this._toast(`✓ Modus: ${SYSTEM_MODE_LABELS[mode] || mode}`);
+      });
+    }
 
     const deactivateGuest = content.querySelector("#diag-deactivate-guest");
     if (deactivateGuest) {
@@ -1382,17 +1392,20 @@ class IHCPanel extends HTMLElement {
       });
     }
 
-    content.querySelector("#diag-reset-stats").addEventListener("click", () => {
-      this._showConfirmModal(
-        "Statistik zurücksetzen?",
-        "Laufzeit und Energiedaten für heute werden auf 0 gesetzt.",
-        async () => {
-          await this._callService("reset_stats", {});
-          this._toast("✓ Statistik zurückgesetzt");
-          setTimeout(() => this._renderTabContent(), 800);
-        }
-      );
-    });
+    const resetStatsBtn = content.querySelector("#diag-reset-stats");
+    if (resetStatsBtn) {
+      resetStatsBtn.addEventListener("click", () => {
+        this._showConfirmModal(
+          "Statistik zurücksetzen?",
+          "Laufzeit und Energiedaten für heute werden auf 0 gesetzt.",
+          async () => {
+            await this._callService("reset_stats", {});
+            this._toast("✓ Statistik zurückgesetzt");
+            setTimeout(() => this._renderTabContent(), 800);
+          }
+        );
+      });
+    }
   }
 
   // ── Einstellungen Tab ──────────────────────────────────────────────────────
@@ -3099,6 +3112,38 @@ class IHCPanel extends HTMLElement {
           <div class="settings-item">
             <label>Gewichtung</label>
             <input type="number" class="form-input" id="m-weight" value="1.0" step="0.1" min="0.1" max="5">
+            <span class="form-hint">Automatisch aus qm berechnet wenn 1.0 &amp; qm gesetzt</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">🌡️ Temperaturgrenzen &amp; Zeiten</div>
+        <div class="settings-grid">
+          <div class="settings-item">
+            <label>Absolute Mindesttemperatur (°C)</label>
+            <input type="number" class="form-input" id="m-absolute-min-temp" value="15" step="0.5" min="5" max="25">
+            <span class="form-hint">Soll-Temperatur fällt nie unter diesen Wert (auch bei Eco/Away/Schlaf)</span>
+          </div>
+          <div class="settings-item">
+            <label>Zimmergröße (m²)</label>
+            <input type="number" class="form-input" id="m-room-qm" value="0" step="1" min="0" max="200">
+            <span class="form-hint">0 = nicht gesetzt · wird für Vorheizzeit, Gewichtung &amp; Energieberechnung genutzt</span>
+          </div>
+          <div class="settings-item">
+            <label>Vorheizzeit pro Zimmer (min)</label>
+            <input type="number" class="form-input" id="m-room-preheat" value="-1" step="1" min="-1" max="120">
+            <span class="form-hint">-1 = globale Einstellung / automatisch aus qm</span>
+          </div>
+          <div class="settings-item">
+            <label>Fenster-Reaktionszeit (s)</label>
+            <input type="number" class="form-input" id="m-window-reaction-time" value="30" step="5" min="0" max="300">
+            <span class="form-hint">Sekunden bis IHC auf offenes Fenster reagiert</span>
+          </div>
+          <div class="settings-item">
+            <label>Wiederaufnahme nach Fenster-zu (s)</label>
+            <input type="number" class="form-input" id="m-window-close-delay" value="0" step="5" min="0" max="600">
+            <span class="form-hint">Sekunden nach Schließen bis normale Heizung wieder beginnt</span>
           </div>
         </div>
       </div>
@@ -3153,6 +3198,11 @@ class IHCPanel extends HTMLElement {
         ha_schedule_off_mode:   modal.querySelector("#m-sched-off-mode")?.value || "eco",
         deadband:               parseFloat(modal.querySelector("#m-deadband").value),
         weight:                 parseFloat(modal.querySelector("#m-weight").value),
+        absolute_min_temp:      parseFloat(modal.querySelector("#m-absolute-min-temp").value),
+        room_qm:                parseFloat(modal.querySelector("#m-room-qm").value) || 0,
+        room_preheat_minutes:   parseInt(modal.querySelector("#m-room-preheat").value, 10),
+        window_reaction_time:   parseFloat(modal.querySelector("#m-window-reaction-time").value),
+        window_close_delay:     parseFloat(modal.querySelector("#m-window-close-delay").value),
         humidity_sensor:        modal.querySelector("#m-humidity-sensor").value.trim(),
         mold_protection_enabled: modal.querySelector("#m-mold-enabled").value === "true",
         co2_sensor:             modal.querySelector("#m-co2-sensor")?.value.trim() || "",
@@ -3303,6 +3353,45 @@ class IHCPanel extends HTMLElement {
             <div class="settings-item">
               <label>Gewichtung</label>
               <input type="number" class="form-input" id="m-weight" value="${room.weight}" step="0.1" min="0.1" max="5">
+              <span class="form-hint">Auto aus qm wenn 1.0 &amp; qm gesetzt${room.effective_weight && room.effective_weight !== room.weight ? ` · aktuell: ${room.effective_weight}` : ""}</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="modal-collapsible" ${(room.room_qm > 0 || room.absolute_min_temp !== 15) ? "open" : ""}>
+        <summary>🌡️ Temperaturgrenzen &amp; Zeiten</summary>
+        <div class="modal-collapsible-body">
+          <div class="settings-grid">
+            <div class="settings-item">
+              <label>Absolute Mindesttemperatur (°C)</label>
+              <input type="number" class="form-input" id="m-absolute-min-temp"
+                value="${room.absolute_min_temp ?? 15}" step="0.5" min="5" max="25">
+              <span class="form-hint">Setpoint fällt nie unter diesen Wert (auch bei Eco/Away/Schlaf)</span>
+            </div>
+            <div class="settings-item">
+              <label>Zimmergröße (m²)</label>
+              <input type="number" class="form-input" id="m-room-qm"
+                value="${room.room_qm ?? 0}" step="1" min="0" max="200">
+              <span class="form-hint">0 = nicht gesetzt · beeinflusst Vorheizzeit, Gewichtung, Energieberechnung</span>
+            </div>
+            <div class="settings-item">
+              <label>Vorheizzeit pro Zimmer (min)</label>
+              <input type="number" class="form-input" id="m-room-preheat"
+                value="${room.room_preheat_minutes ?? -1}" step="1" min="-1" max="120">
+              <span class="form-hint">-1 = globale Einstellung / auto aus qm · 0 = deaktiviert</span>
+            </div>
+            <div class="settings-item">
+              <label>Fenster-Reaktionszeit (s)</label>
+              <input type="number" class="form-input" id="m-window-reaction-time"
+                value="${room.window_reaction_time ?? 30}" step="5" min="0" max="300">
+              <span class="form-hint">Sekunden bis IHC auf offenes Fenster reagiert</span>
+            </div>
+            <div class="settings-item">
+              <label>Wiederaufnahme nach Fenster-zu (s)</label>
+              <input type="number" class="form-input" id="m-window-close-delay"
+                value="${room.window_close_delay ?? 0}" step="5" min="0" max="600">
+              <span class="form-hint">Sekunden nach Schließen bis normale Heizung wieder beginnt</span>
             </div>
           </div>
         </div>
@@ -3453,6 +3542,11 @@ class IHCPanel extends HTMLElement {
         room_offset:    parseFloat(modal.querySelector("#m-offset").value),
         deadband:       parseFloat(modal.querySelector("#m-deadband").value),
         weight:         parseFloat(modal.querySelector("#m-weight").value),
+        absolute_min_temp:      parseFloat(modal.querySelector("#m-absolute-min-temp")?.value) || 15,
+        room_qm:                parseFloat(modal.querySelector("#m-room-qm")?.value) || 0,
+        room_preheat_minutes:   parseInt(modal.querySelector("#m-room-preheat")?.value ?? "-1", 10),
+        window_reaction_time:   parseFloat(modal.querySelector("#m-window-reaction-time")?.value) || 30,
+        window_close_delay:     parseFloat(modal.querySelector("#m-window-close-delay")?.value) || 0,
         humidity_sensor:          modal.querySelector("#m-humidity-sensor")?.value.trim() || "",
         mold_protection_enabled:  modal.querySelector("#m-mold-protection")?.value === "true",
         co2_sensor:               modal.querySelector("#m-co2-sensor")?.value.trim() || "",
@@ -3660,7 +3754,7 @@ class IHCPanel extends HTMLElement {
   _costStr(rawKwh, staticPrice) {
     const kwh = this._kwh(rawKwh);
     const parts = [`~${kwh} kWh`];
-    const price = staticPrice ?? parseFloat(localStorage.getItem("ihc_static_price") || "") || null;
+    const price = staticPrice ?? (parseFloat(localStorage.getItem("ihc_static_price") || "") || null);
     if (price && kwh > 0) parts.push(`≈ ${(kwh * price).toFixed(2)} €`);
     return parts.join(" · ");
   }
