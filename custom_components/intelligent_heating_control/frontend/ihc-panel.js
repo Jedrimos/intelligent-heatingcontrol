@@ -347,13 +347,13 @@ const STYLES = `
     background-repeat: no-repeat; background-position: right 8px center;
     padding-right: 22px;
   }
-  .mode-select.active-auto     { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 12%, transparent); }
-  .mode-select.active-comfort  { border-color: #fb8c00; background: #fff3e0; }
-  .mode-select.active-eco      { border-color: #43a047; background: #e8f5e9; }
-  .mode-select.active-sleep    { border-color: #5c6bc0; background: #e8eaf6; }
-  .mode-select.active-away     { border-color: #e65100; background: #fff3e0; }
-  .mode-select.active-off      { border-color: #9e9e9e; background: #f5f5f5; }
-  .mode-select.active-manual   { border-color: #8d6e63; background: #efebe9; }
+  .mode-select.active-auto     { border-color: var(--primary-color);  background: color-mix(in srgb, var(--primary-color) 12%, transparent); }
+  .mode-select.active-comfort  { border-color: #fb8c00; background: color-mix(in srgb, #fb8c00 15%, transparent); }
+  .mode-select.active-eco      { border-color: #43a047; background: color-mix(in srgb, #43a047 15%, transparent); }
+  .mode-select.active-sleep    { border-color: #5c6bc0; background: color-mix(in srgb, #5c6bc0 15%, transparent); }
+  .mode-select.active-away     { border-color: #e65100; background: color-mix(in srgb, #e65100 15%, transparent); }
+  .mode-select.active-off      { border-color: #9e9e9e; background: color-mix(in srgb, #9e9e9e 15%, transparent); }
+  .mode-select.active-manual   { border-color: #8d6e63; background: color-mix(in srgb, #8d6e63 15%, transparent); }
   .btn-boost {
     padding: 5px 10px; border-radius: 8px; border: 1.5px solid #fb8c00;
     background: transparent; color: #fb8c00; font-size: 12px; font-weight: 700;
