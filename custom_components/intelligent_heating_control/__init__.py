@@ -157,7 +157,6 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def _async_register_panel(hass: HomeAssistant) -> None:
     """Register the custom frontend panel."""
-    import os
     from pathlib import Path
 
     panel_dir = Path(__file__).parent / "frontend"

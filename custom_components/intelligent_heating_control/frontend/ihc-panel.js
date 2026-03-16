@@ -733,8 +733,8 @@ class IHCPanel extends HTMLElement {
       guest_remaining_minutes:   a.guest_remaining_minutes != null ? a.guest_remaining_minutes : null,
       weather_forecast:          a.weather_forecast || null,
       cold_boost:                ea.cold_boost != null ? parseFloat(ea.cold_boost) : 0,
-      eta_preheat_minutes:       a.eta_preheat_minutes != null ? parseFloat(a.eta_preheat_minutes) : null,
-      adaptive_curve_delta:      a.adaptive_curve_delta != null ? parseFloat(a.adaptive_curve_delta) : 0,
+      eta_preheat_minutes:       ea.eta_preheat_minutes != null ? parseFloat(ea.eta_preheat_minutes) : null,
+      adaptive_curve_delta:      ea.adaptive_curve_delta != null ? parseFloat(ea.adaptive_curve_delta) : 0,
       outdoor_humidity:          a.outdoor_humidity != null ? parseFloat(a.outdoor_humidity) : null,
       static_energy_price:       a.static_energy_price != null ? parseFloat(a.static_energy_price) : null,
     };
