@@ -1,93 +1,476 @@
-# CLAUDE.md – Entwicklungsregeln für Intelligent Heating Control
+# CLAUDE.md – Vollständige Entwicklungsdokumentation: Intelligent Heating Control
 
-## Kritische Regeln – IMMER einhalten
+> **Wenn du diese Datei liest ohne Chat-Verlauf:** Lies diese Datei komplett durch.
+> Sie enthält alles was du brauchst um das Projekt weiterzuentwickeln.
 
-### Python-Backend
+---
 
-1. **Konstanten-Konsistenz**: Jede Konstante die in `const.py` definiert wird, muss an ALLEN folgenden Stellen synchron gehalten werden:
-   - `const.py` (Definition)
-   - `coordinator.py` (Import + Verwendung)
-   - `config_flow.py` (Import + Formulare + Speichern)
-   - `climate.py` (Import + extra_state_attributes)
-   - Vor dem Löschen einer Konstante: `grep -rn "CONST_NAME" .` ausführen!
+## 1. Was ist dieses Projekt?
 
-2. **Vor dem Löschen einer CONF_/DEFAULT_-Konstante immer prüfen**:
-   ```bash
-   grep -rn "CONF_XYZ\|DEFAULT_XYZ" custom_components/ --include="*.py"
-   ```
-   Erst löschen wenn alle Referenzen entfernt sind.
+**Intelligent Heating Control (IHC)** ist eine Home Assistant Custom Integration (HACS-kompatibel),
+die eine intelligente, raumbasierte Heizungssteuerung realisiert.
 
-3. **Import-Fehler vermeiden**: Nach jeder Änderung an `const.py` prüfen ob alle Importe in `coordinator.py`, `config_flow.py`, `climate.py` noch gültig sind.
+- **Domain:** `intelligent_heating_control`
+- **Version:** `1.0.1a1`
+- **Repository:** https://github.com/Jedrimos/intelligent-heatingcontroll
+- **Branch für Claude-Entwicklung:** `claude/hacs-heating-control-plugin-NXmK3`
+- **Dateipfad:** `/home/user/intelligent-heatingcontroll/`
+- **Integration-Pfad:** `custom_components/intelligent_heating_control/`
 
-4. **Neue Konstanten**: Wenn eine neue CONF_* Konstante hinzugefügt wird:
-   - In `const.py` definieren
-   - In `config_flow.py` importieren + in den Formularen anzeigen + im save-handler speichern
-   - In `climate.py` importieren + in `extra_state_attributes` zurückgeben
-   - In `coordinator.py` importieren + in der Logik verwenden
+### Was kann es?
+- Pro-Zimmer Heizplanung mit Zeitplänen (eigenes Format + HA schedule entities)
+- Mehrere Betriebsmodi: auto, comfort, eco, sleep, away, vacation, guest, boost
+- Heizkurve (Außentemperatur → Vorlauftemperatur)
+- Fenstererkennung mit Reaktions- und Schließverzögerung
+- Schimmelschutz (Humidity-Sensor), CO₂-Überwachung, HKV-Sensor
+- Boost-Modus pro Zimmer (temporäre Erhöhung)
+- TRV-Modus: Thermostatic Radiator Valves direkt steuern ODER Switch-Modus
+- Nachtabsenkung, Sommerautomatik, Frostschutz, Vorheizung
+- Vollständiges Web-Frontend (Single-Page-App in `ihc-panel.js`)
 
-### JavaScript-Frontend (ihc-panel.js)
+---
 
-5. **Element-IDs konsistent**: HTML-IDs in Templates müssen mit `querySelector("#id")` im save-handler übereinstimmen. Wenn ein Element entfernt wird, den save-handler ebenfalls anpassen.
+## 2. Datei-Übersicht
 
-6. **Neue Felder im Add-Room-Modal** müssen auch im Edit-Room-Modal vorhanden sein (und umgekehrt). Beide haben eigene save-handler.
+```
+custom_components/intelligent_heating_control/
+├── __init__.py          # Integration setup, Service-Registrierung
+├── manifest.json        # HACS-Metadaten, version, requirements
+├── const.py             # ALLE Konstanten (CONF_*, DEFAULT_*, ATTR_*, etc.)
+├── coordinator.py       # Heizlogik, Berechnung, Update-Zyklus, Service-Handler
+├── config_flow.py       # HA ConfigFlow (Setup-Wizard + Options-Dialog)
+├── climate.py           # Climate-Entität (eine pro Zimmer + global)
+├── sensor.py            # Sensor-Entitäten
+├── switch.py            # Switch-Entitäten
+├── number.py            # Number-Entitäten
+├── select.py            # Select-Entitäten
+├── services.yaml        # Service-Definitionen (8 Services)
+├── strings.json         # Übersetzungen für config_flow
+├── icon.png             # Integration-Icon (256×256 PNG, orange Heizkörper)
+└── frontend/
+    └── ihc-panel.js     # KOMPLETTES Frontend (Web Component, ~4000 Zeilen)
+```
 
-7. **Entfernte Tabs aus dem switch entfernen**: Wenn ein Tab aus dem Tab-Bar entfernt wird, auch den `case` in `_renderTabContent()` entfernen.
+---
 
-8. **querySelector mit `?.` für optionale Elemente**: Wenn ein Element nicht in jedem Kontext vorhanden ist, immer `querySelector("#id")?.value` verwenden.
+## 3. Architektur & Datenfluss
 
-## Workflow
+```
+config_flow.py  →  HA Options-Store  →  coordinator.py  →  climate.py  →  ihc-panel.js
+   (UI-Config)                           (Logik/Calc)      (Attribute)    (Web Frontend)
+                                              ↑
+                                    callService() vom Frontend
+```
 
-### Vor jedem Commit
+### Wie kommen Daten ins Frontend?
+
+1. **coordinator.py** berechnet pro Zimmer: Zieltemperatur, Anforderung (demand), Modus, Status
+2. **climate.py** stellt `extra_state_attributes` bereit – ein großes dict mit allem
+3. **ihc-panel.js** liest via `hass.states["climate.ihc_ZIMMER_NAME"]` die Attribute
+4. Frontend schreibt via `callService(domain, service, data)` zurück
+
+### Entitäts-Namensschema
+- Global: `climate.intelligent_heating_control` (enthält alle Zimmer in Attributen)
+- Pro Zimmer: `climate.ihc_<zimmer_name_lowercase>` (z.B. `climate.ihc_wohnzimmer`)
+
+---
+
+## 4. Frontend-Architektur (ihc-panel.js)
+
+### Tab-Struktur (aktueller Stand nach Refactor)
+```
+🏠 Dashboard      → _renderOverview()
+🚪 Zimmer         → _renderRooms()
+                     ↓ wenn Zimmer ausgewählt (_selectedRoom != null):
+                     _renderRoomDetail(room, container)
+                       Sub-Tab 📅 Zeitplan    → _renderRoomScheduleInline(room, container)
+                       Sub-Tab 🗓️ Wochenansicht → _renderRoomCalendarInline(room, container)
+📊 Übersicht      → _renderDiagnose()
+⚙️ Einstellungen  → _renderSettings()
+📈 Heizkurve      → _renderCurve()
+```
+
+### Wichtige State-Variablen
+```javascript
+this._activeTab         // aktueller Haupt-Tab ("overview" | "rooms" | "diagnose" | "settings" | "curve")
+this._selectedRoom      // entity_id des ausgewählten Zimmers (null = Zimmerliste anzeigen)
+this._selectedRoomTab   // "schedule" | "calendar"
+this._editingSchedules  // { [entityId]: schedules[] } – Zeitplan-Puffer bis Speichern
+this._modalOpen         // true wenn Add/Edit-Modal offen
+```
+
+### Zeitplan-Format
+```javascript
+// IHC-eigenes Format (CONF_SCHEDULES)
+[{
+  days: ["mon", "tue", "wed", "thu", "fri"],
+  periods: [
+    { start: "06:00", end: "08:00", temperature: 21.0, offset: 0 },
+    { start: "17:00", end: "22:00", temperature: 22.0, offset: 0 }
+  ]
+}]
+
+// HA Schedule-Format (CONF_HA_SCHEDULES)
+[{
+  entity: "schedule.wohnzimmer_heizung",
+  temperature: 22.0,
+  condition_entity: "person.max",  // optional
+  condition_state: "home"          // optional, default "on"
+}]
+```
+
+### Service-Calls (Frontend → Backend)
+```javascript
+// Immer über:
+this._callService("service_name", { field: value, ... })
+// Übersetzt zu: hass.callService("intelligent_heating_control", "service_name", data)
+
+_callService("add_room",               { name, temp_sensor, valve_entities, ... })
+_callService("update_room",            { id, schedules, ha_schedules, ... })
+_callService("remove_room",            { id })
+_callService("set_room_mode",          { id, mode })
+_callService("boost_room",             { id, duration_minutes, temp?, cancel? })
+_callService("update_global_settings", { outdoor_temp_sensor, controller_mode, ... })
+_callService("set_system_mode",        { mode })
+_callService("reload",                 {})
+```
+
+---
+
+## 5. Alle Konstanten (const.py)
+
+### Globale CONF_* (Systemkonfiguration)
+| Konstante | Typ | Default | Beschreibung |
+|-----------|-----|---------|--------------|
+| `CONF_OUTDOOR_TEMP_SENSOR` | str | – | Außentemperatursensor entity_id |
+| `CONF_HEATING_SWITCH` | str | – | Heizungsschalter entity_id |
+| `CONF_COOLING_SWITCH` | str | – | Kühlschalter entity_id |
+| `CONF_HEATING_CURVE` | list | DEFAULT_HEATING_CURVE | Heizkurvenpunkte |
+| `CONF_DEMAND_THRESHOLD` | float | 15.0 | Einschaltschwelle % |
+| `CONF_DEMAND_HYSTERESIS` | float | 5.0 | Hysterese % |
+| `CONF_MIN_ON_TIME` | int | 5 | Min. Einschaltzeit (min) |
+| `CONF_MIN_OFF_TIME` | int | 5 | Min. Ausschaltzeit (min) |
+| `CONF_MIN_ROOMS_DEMAND` | int | 1 | Min. Zimmer mit Anforderung |
+| `CONF_SYSTEM_MODE` | str | "auto" | Systemmodus |
+| `CONF_AWAY_TEMP` | float | 16.0 | Abwesend-Temperatur global |
+| `CONF_VACATION_TEMP` | float | 14.0 | Urlaubstemperatur |
+| `CONF_PRESENCE_ENTITY` | str | – | Globale Anwesenheit entity_id |
+| `CONF_PRESENCE_ENTITIES` | list | – | Liste Anwesenheits-Entitäten |
+| `CONF_ENABLE_COOLING` | bool | False | Kühlung aktiviert |
+| `CONF_SUMMER_MODE_ENABLED` | bool | False | Sommerautomatik |
+| `CONF_SUMMER_THRESHOLD` | float | 18.0 | Sommer-Schwelle °C |
+| `CONF_SHOW_PANEL` | bool | True | Frontend-Panel anzeigen |
+| `CONF_FROST_PROTECTION_TEMP` | float | 7.0 | Frostschutz-Temperatur °C |
+| `CONF_NIGHT_SETBACK_ENABLED` | bool | False | Nachtabsenkung aktiv |
+| `CONF_NIGHT_SETBACK_OFFSET` | float | 2.0 | Nachtabsenkungs-Offset °C |
+| `CONF_SUN_ENTITY` | str | "sun.sun" | Sonnen-Entität |
+| `CONF_PREHEAT_MINUTES` | int | 0 | Globale Vorheizzeit (min) |
+| `CONF_CONTROLLER_MODE` | str | "switch" | "switch" oder "trv" |
+| `CONF_BOILER_KW` | float | 20.0 | Kesselleistung kW |
+| `CONF_SOLAR_ENTITY` | str | – | Solar-Leistungssensor |
+| `CONF_SOLAR_SURPLUS_THRESHOLD` | int | 1000 | Solar-Überschuss W |
+| `CONF_SOLAR_BOOST_TEMP` | float | 1.0 | Boost bei Solar-Überschuss °C |
+| `CONF_ENERGY_PRICE_ENTITY` | str | – | Dynamischer Strompreissensor |
+| `CONF_ENERGY_PRICE_THRESHOLD` | float | 0.30 | Teuer-Schwelle €/kWh |
+| `CONF_ENERGY_PRICE_ECO_OFFSET` | float | 2.0 | Eco-Abzug bei hohem Preis °C |
+| `CONF_FLOW_TEMP_ENTITY` | str | – | Vorlauftemperatur number entity |
+| `CONF_FLOW_TEMP_SENSOR` | str | – | Vorlauftemperatursensor |
+| `CONF_VACATION_START` | str | – | Urlaubsstart ISO-Datum |
+| `CONF_VACATION_END` | str | – | Urlaubsende ISO-Datum |
+| `CONF_VACATION_CALENDAR` | str | – | Kalender-Entität für Urlaub |
+| `CONF_VACATION_CALENDAR_KEYWORD` | str | "urlaub" | Stichwort im Kalender |
+| `CONF_VACATION_RETURN_PREHEAT_DAYS` | int | 0 | Vorheizung vor Urlaubsende (Tage) |
+| `CONF_WEATHER_ENTITY` | str | – | Wetter-Entität |
+| `CONF_WEATHER_COLD_THRESHOLD` | float | 0.0 | Kalt-Warnung °C |
+| `CONF_WEATHER_COLD_BOOST` | float | 0.0 | Boost bei Kältewarnung °C |
+| `CONF_ADAPTIVE_CURVE_ENABLED` | bool | False | Adaptive Heizkurve |
+| `CONF_ADAPTIVE_CURVE_MAX_DELTA` | float | 3.0 | Max. Kurvenverschiebung °C |
+| `CONF_ADAPTIVE_PREHEAT_ENABLED` | bool | True | Adaptive Vorheizung |
+| `CONF_ETA_PREHEAT_ENABLED` | bool | False | ETA-basierte Vorheizung |
+| `CONF_COOLING_TARGET_TEMP` | float | 24.0 | Kühl-Zieltemperatur °C |
+| `CONF_PID_KP` | float | 2.0 | PID Proportionalanteil |
+| `CONF_PID_KI` | float | 0.1 | PID Integrationsanteil |
+| `CONF_PID_KD` | float | 0.5 | PID Differentialanteil |
+| `CONF_SMART_METER_ENTITY` | str | – | Smart-Meter kWh-Sensor |
+| `CONF_PRICE_FORECAST_ATTRIBUTE` | str | "today_prices" | Tibber-Preis-Attribut |
+| `CONF_OUTDOOR_HUMIDITY_SENSOR` | str | – | Außen-Feuchtigkeitssensor |
+| `CONF_GUEST_DURATION_HOURS` | int | 24 | Gäste-Modus Dauer (h) |
+
+### Raum-CONF_* (pro Zimmer)
+| Konstante | Typ | Default | Beschreibung |
+|-----------|-----|---------|--------------|
+| `CONF_ROOMS` | list | [] | Alle Zimmer-Konfigurationen |
+| `CONF_ROOM_ID` | str | – | Interne Zimmer-ID |
+| `CONF_ROOM_NAME` | str | – | Zimmername |
+| `CONF_TEMP_SENSOR` | str | – | Temperatursensor entity_id |
+| `CONF_VALVE_ENTITY` | str | – | Primär-Thermostat entity_id |
+| `CONF_VALVE_ENTITIES` | list | – | Liste aller Thermostate/TRVs |
+| `CONF_WINDOW_SENSOR` | str | – | Primär-Fenstersensor |
+| `CONF_WINDOW_SENSORS` | list | – | Liste aller Fenstersensoren |
+| `CONF_WINDOW_REACTION_TIME` | int | 30 | Sekunden bis Fenster-Reaktion |
+| `CONF_WINDOW_CLOSE_DELAY` | int | 0 | Sekunden nach Schließen |
+| `CONF_ROOM_OFFSET` | float | 0.0 | Offset zur Heizkurve °C |
+| `CONF_DEADBAND` | float | 0.5 | Totband °C |
+| `CONF_WEIGHT` | float | 1.0 | Gewichtung in Gesamtanforderung |
+| `CONF_MIN_TEMP` | float | 5.0 | Minimale Temperatur °C |
+| `CONF_MAX_TEMP` | float | 30.0 | Maximale Temperatur °C |
+| `CONF_COMFORT_TEMP` | float | 21.0 | Komfort-Temperatur °C |
+| `CONF_AWAY_TEMP_ROOM` | float | 16.0 | Abwesend-Temp pro Zimmer °C |
+| `CONF_ABSOLUTE_MIN_TEMP` | float | 15.0 | Absoluter Boden °C |
+| `CONF_ROOM_QM` | float | 0.0 | Zimmerfläche m² |
+| `CONF_ROOM_PREHEAT_MINUTES` | int | -1 | Vorheizzeit (-1=global) |
+| `CONF_ECO_OFFSET` | float | 3.0 | Eco-Abzug von Komfort °C |
+| `CONF_SLEEP_OFFSET` | float | 4.0 | Schlaf-Abzug von Komfort °C |
+| `CONF_AWAY_OFFSET` | float | 6.0 | Away-Abzug von Komfort °C |
+| `CONF_ECO_MAX_TEMP` | float | 21.0 | Eco-Maximum °C |
+| `CONF_SLEEP_MAX_TEMP` | float | 19.0 | Schlaf-Maximum °C |
+| `CONF_AWAY_MAX_TEMP` | float | 18.0 | Away-Maximum °C |
+| `CONF_HA_SCHEDULE_OFF_MODE` | str | "eco" | Fallback-Modus ohne Zeitplan |
+| `CONF_SCHEDULES` | list | [] | IHC-Zeitpläne |
+| `CONF_HA_SCHEDULES` | list | [] | HA Schedule-Entitäten |
+| `CONF_HUMIDITY_SENSOR` | str | – | Feuchtigkeitssensor |
+| `CONF_MOLD_PROTECTION_ENABLED` | bool | True | Schimmelschutz aktiv |
+| `CONF_MOLD_HUMIDITY_THRESHOLD` | float | 70.0 | Schimmel-Schwelle % |
+| `CONF_CO2_SENSOR` | str | – | CO₂-Sensor entity_id |
+| `CONF_CO2_THRESHOLD_GOOD` | int | 800 | Gute Luft ppm |
+| `CONF_CO2_THRESHOLD_BAD` | int | 1200 | Schlechte Luft ppm |
+| `CONF_VENTILATION_ADVICE_ENABLED` | bool | True | Lüftungsempfehlung aktiv |
+| `CONF_RADIATOR_KW` | float | 1.0 | Heizkörperleistung kW |
+| `CONF_HKV_SENSOR` | str | – | HKV-Einheiten Sensor |
+| `CONF_HKV_FACTOR` | float | 0.083 | kWh pro HKV-Einheit |
+| `CONF_ROOM_PRESENCE_ENTITIES` | list | – | Zimmer-Anwesenheitsliste |
+| `CONF_BOOST_TEMP` | float | – | Boost-Zieltemperatur °C |
+| `CONF_BOOST_DEFAULT_DURATION` | int | 60 | Boost-Standarddauer (min) |
+| `CONF_TEMP_CALIBRATION` | float | 0.0 | Sensor-Kalibrierungsoffset °C |
+| `CONF_ECO_OFFSET` | float | 3.0 | Eco-Abzug °C |
+
+### Systemmodi (`SYSTEM_MODES`)
+`auto` | `heat` | `cool` | `off` | `away` | `vacation` | `guest`
+
+### Zimmermodi (`ROOM_MODES`)
+`auto` | `comfort` | `eco` | `sleep` | `away` | `off` | `manual`
+
+### Controller-Modi
+`switch` (Heizungsschalter steuern) | `trv` (TRVs direkt steuern, bei kein Bedarf zudrehen)
+
+---
+
+## 6. Services (services.yaml)
+
+### `add_room`
+Neues Zimmer hinzufügen.
+```
+name (required), temp_sensor, valve_entity, window_sensor,
+room_offset, comfort_temp, eco_temp, sleep_temp, deadband, weight
+```
+
+### `remove_room`
+```
+id (required)
+```
+
+### `update_room`
+Bestehendes Zimmer aktualisieren – alle Felder optional außer `id`.
+```
+id (required), temp_sensor, valve_entity, valve_entities, window_sensor, window_sensors,
+comfort_temp, eco_offset, eco_max_temp, sleep_offset, sleep_max_temp, away_offset, away_max_temp,
+room_offset, deadband, weight, ha_schedule_off_mode, schedules, ha_schedules,
+humidity_sensor, mold_protection_enabled, co2_sensor, radiator_kw,
+hkv_sensor, hkv_factor, room_presence_entities, boost_temp, boost_default_duration
+```
+
+### `set_room_mode`
+```
+id (required), mode (required): auto|comfort|eco|sleep|away|off|manual
+```
+
+### `set_system_mode`
+```
+mode (required): auto|heat|cool|off|away|vacation
+```
+
+### `boost_room`
+```
+id (required), duration_minutes (default:60), cancel (bool, default:false)
+```
+
+### `update_global_settings`
+```
+demand_threshold, demand_hysteresis, min_on_time, min_off_time, min_rooms_demand,
+away_temp, vacation_temp, frost_protection_temp, summer_mode_enabled, summer_threshold,
+night_setback_enabled, night_setback_offset, preheat_minutes
+```
+
+### `reload`
+Integration neu laden (keine Parameter).
+
+---
+
+## 7. Git-Workflow
 
 ```bash
-# Python-Syntax prüfen
-python3 -m py_compile custom_components/intelligent_heating_control/const.py
-python3 -m py_compile custom_components/intelligent_heating_control/coordinator.py
-python3 -m py_compile custom_components/intelligent_heating_control/config_flow.py
-python3 -m py_compile custom_components/intelligent_heating_control/climate.py
+# Branch
+git checkout claude/hacs-heating-control-plugin-NXmK3
+# oder erstellen falls nötig:
+git checkout -b claude/hacs-heating-control-plugin-NXmK3
 
-# Verwaiste Referenzen suchen
-grep -rn "CONF_WINDOW_OPEN_TEMP\|DEFAULT_WINDOW_OPEN_TEMP" custom_components/ --include="*.py"
+# Commiten
+git add custom_components/intelligent_heating_control/DATEI.py
+git commit -m "fix: beschreibung der änderung"
+
+# Pushen (IMMER so)
+git push -u origin claude/hacs-heating-control-plugin-NXmK3
 ```
 
-### Branch-Regeln
+**Niemals auf `main` pushen.**
 
-- Entwicklungs-Branch: `claude/hacs-heating-control-plugin-NXmK3`
-- Niemals direkt auf `main` pushen
-- Push-Befehl: `git push -u origin claude/hacs-heating-control-plugin-NXmK3`
+---
 
-## Architektur
+## 8. Pflicht-Checks vor jedem Commit
 
-### Datenfluss
+```bash
+cd /home/user/intelligent-heatingcontroll
+
+# 1. Python-Syntax prüfen
+python3 -m py_compile custom_components/intelligent_heating_control/const.py && echo OK
+python3 -m py_compile custom_components/intelligent_heating_control/coordinator.py && echo OK
+python3 -m py_compile custom_components/intelligent_heating_control/config_flow.py && echo OK
+python3 -m py_compile custom_components/intelligent_heating_control/climate.py && echo OK
+
+# 2. Keine verwaisten Importe (Beispiel: nach Löschen einer Konstante)
+grep -rn "CONF_XYZ" custom_components/ --include="*.py"
+# → muss leer sein
+
+# 3. Keine querySelector-Referenzen auf gelöschte HTML-Elemente
+grep -n "querySelector.*#element-id" custom_components/intelligent_heating_control/frontend/ihc-panel.js
+
+# 4. Diff lesen
+git diff --stat
 ```
-config_flow.py (UI-Konfiguration)
-    → options (HA config_entries)
-    → coordinator.py (liest options, berechnet Logik)
-    → climate.py (extra_state_attributes = was das Frontend sieht)
-    → ihc-panel.js (liest state.attributes, zeigt UI)
-    → callService() → coordinator.py (verarbeitet Service-Calls)
+
+---
+
+## 9. Bug-Analyse: Woher kamen die Bugs?
+
+Alle Bugs hatten **ein einziges Muster**: Eine Änderung wurde an Stelle A gemacht,
+aber die abhängige Stelle B wurde vergessen.
+
+| Bug | Ursache |
+|-----|---------|
+| `CONF_WINDOW_OPEN_TEMP` Import-Crash HA | In `const.py` gelöscht, `coordinator.py` importierte es noch |
+| `enable-heating-switch` JS-Fehler | HTML-Element entfernt, `querySelector` im save-handler blieb |
+| Zeitpläne/Kalender Switch-Case blieb | Tab aus HTML entfernt, `case` in `_renderTabContent()` blieb |
+| Add-Room fehlte CO₂ + Presence-Feld | Felder im Edit-Modal ergänzt, Add-Modal nie synchronisiert |
+| `<select>` hatte Klasse `form-input` | Aus `<input>`-Template kopiert ohne Klasse anzupassen |
+| Float statt Int für Reaktionszeiten | Frontend: `parseFloat()`, Backend: `int()` – nie abgeglichen |
+
+---
+
+## 10. Checklisten nach Änderungstyp
+
+### Wenn eine Konstante aus `const.py` gelöscht oder umbenannt wird
+
+```bash
+# PFLICHT vor dem Löschen: alle Referenzen suchen
+grep -rn "CONF_XYZ\|DEFAULT_XYZ" custom_components/ --include="*.py"
 ```
 
-### Wichtige Service-Calls (Frontend → Backend)
-- `add_room` / `update_room` / `remove_room` – Zimmerverwaltung
-- `set_room_mode` – Zimmermodus setzen
-- `update_global_settings` – Globale Einstellungen
-- `boost_room` – Boost aktivieren/deaktivieren
-- `set_system_mode` – Systemmodus
+Alle gefundenen Stellen müssen **im gleichen Commit** bereinigt werden:
+- [ ] `const.py` – Definition entfernt
+- [ ] `coordinator.py` – Import + alle Verwendungen entfernt
+- [ ] `config_flow.py` – Import + Formular + save-handler bereinigt
+- [ ] `climate.py` – Import + `extra_state_attributes` bereinigt
 
-### Zeitpläne
-- IHC-Zeitpläne: `update_room` mit `schedules: [{ days: [...], periods: [...] }]`
-- HA-Zeitpläne: `update_room` mit `ha_schedules: [{ entity, mode, condition_entity, condition_state }]`
-- Zeitpläne werden in `_editingSchedules[entityId]` gepuffert bis gespeichert
-- Nach Import: `delete this._editingSchedules[entityId]` damit neu geladen wird
+### Wenn eine Konstante in `const.py` neu hinzugefügt wird
 
-### Tab-Struktur (Frontend)
-- `🏠 Dashboard` → `_renderOverview()` – Zimmer-Kacheln + System-Status
-- `🚪 Zimmer` → `_renderRooms()` – Liste + Zimmer-Detail (Zeitplan, Kalender als Sub-Tabs)
-- `📊 Übersicht` → `_renderDiagnose()` – Statistiken, Messwerte
-- `⚙️ Einstellungen` → `_renderSettings()` – Globale Konfiguration
-- `📈 Heizkurve` → `_renderCurve()` – Heizkurven-Editor
+- [ ] `const.py` – Definition mit `CONF_` und `DEFAULT_` Wert
+- [ ] `config_flow.py` – Import, im Formular anzeigen, im save-handler `int()`/`float()`/`str()` speichern
+- [ ] `climate.py` – Import, in `extra_state_attributes` zurückgeben mit korrektem Fallback-Typ
+- [ ] `coordinator.py` – Import, in der Logik verwenden
 
-### Zimmer-Detail Sub-Tabs
-- `📅 Zeitplan` → `_renderRoomScheduleInline(room, container)`
-- `🗓️ Wochenansicht` → `_renderRoomCalendarInline(room, container)`
+### Wenn ein HTML-Element im Frontend entfernt oder umbenannt wird
+
+Für jede entfernte `id="foo"`:
+- [ ] Suche alle `querySelector("#foo")` und `#foo` im JS → entfernen oder anpassen
+- [ ] Prüfe ob Event-Listener (`addEventListener`) für dieses Element existieren → entfernen
+
+```bash
+grep -n "foo" custom_components/intelligent_heating_control/frontend/ihc-panel.js
+```
+
+### Wenn ein Tab aus der Tab-Bar entfernt wird
+
+Beide Stellen sind immer gemeinsam zu ändern:
+- [ ] HTML: `<div class="tab" data-tab="xyz">` entfernen
+- [ ] JS: `case "xyz": this._renderXyz(content); break;` in `_renderTabContent()` entfernen
+- [ ] JS: Auto-Refresh-Timer prüfen (suche nach `this._activeTab === "xyz"`)
+
+### Wenn ein Feld zu einem Modal hinzugefügt wird
+
+Add-Room und Edit-Room Modal müssen **immer synchron** bleiben:
+- [ ] Feld im `_showAddRoomModal()` HTML ergänzt
+- [ ] Feld im `_showAddRoomModal()` save-handler ergänzt (mit `?.value` für sichere Abfrage)
+- [ ] Feld im `_showEditRoomModal()` HTML ergänzt (mit Vorbelegung aus `room.xyz`)
+- [ ] Feld im `_showEditRoomModal()` save-handler ergänzt
+
+### Typen zwischen Frontend und Backend
+
+| Python-Typ | Frontend → Backend | Backend → Frontend |
+|------------|--------------------|--------------------|
+| `int` | `parseInt(val, 10)` | `?? 0` |
+| `float` | `parseFloat(val)` | `?? 0.0` |
+| `bool` | `val === "true"` | `!== false` |
+| `str` | `.value.trim()` | `\|\| ""` |
+| `list` | `.split(",").map(s=>s.trim()).filter(Boolean)` | `\|\| []` |
+
+**Niemals** `parseFloat()` für Werte die Backend als `int` erwartet (Sekunden, Minuten, ppm).
+
+---
+
+## 11. Bekannte offene Punkte / Roadmap
+
+### Implementiert (✅)
+- Zeitpläne und Kalender als Zimmer-Sub-Tabs statt globale Tabs
+- TRV-Modus sichtbar in Einstellungen (Hardware & Steuerung)
+- Hysterese und Timing sichtbar (Heizungsregelung & Hysterese, standardmäßig offen)
+- Add-Room Modal: CO₂-Sensor und Presence-Entitäten Felder ergänzt
+- Schimmelschutz-Select: CSS-Klasse auf `form-select` korrigiert
+- HA-Startup-Crash (CONF_WINDOW_OPEN_TEMP) behoben
+- icon.png generiert (256×256 Heizkörper-Icon, orange)
+- CLAUDE.md als vollständiges Onboarding-Dokument
+
+### Geplant / Roadmap
+- 1.1: Temperaturverlauf 7 Tage (168h Snapshots)
+- 1.2: Urlaubs-Assistent (Datumsbereich, Kalender-Keyword)
+- 1.3: Adaptive Heizkurve, Solarüberschuss-Integration, Energiepreisoptimierung
+- 1.4: ETA-basierte Vorheizung, Room-Presence per Zimmer
+- 1.5: PID Vorlauftemperaturregelung, Smart-Meter, Tibber-Forecast
+- 2.0: Wettervorhersage-Integration, Gäste-Modus erweitert
+
+---
+
+## 12. Schnellstart für neuen Claude-Context
+
+Falls du diesen Chat frisch öffnest ohne Verlauf, tue folgendes:
+
+```bash
+# 1. Ins Projekt wechseln
+cd /home/user/intelligent-heatingcontroll
+
+# 2. Auf richtigen Branch wechseln
+git checkout claude/hacs-heating-control-plugin-NXmK3
+
+# 3. Aktuellen Status sehen
+git status
+git log --oneline -10
+
+# 4. Python-Syntax aller Backend-Dateien prüfen
+for f in const.py coordinator.py config_flow.py climate.py; do
+  python3 -m py_compile custom_components/intelligent_heating_control/$f && echo "✓ $f"
+done
+
+# 5. Frontend-Datei lesen wenn nötig
+# Read: custom_components/intelligent_heating_control/frontend/ihc-panel.js
+```
+
+**Dann diese CLAUDE.md lesen und Aufgaben aus dem letzten Chat-Kontext übernehmen.**
