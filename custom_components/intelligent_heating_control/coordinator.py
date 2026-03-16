@@ -209,6 +209,9 @@ from .flow_temp_pid import FlowTempPID
 
 _LOGGER = logging.getLogger(__name__)
 
+# TRV battery-save: minimum temperature change before sending a new setpoint to TRV
+TRV_TEMP_HYSTERESIS = 0.3  # °C – only send update if setpoint changes by at least this much
+
 
 class IHCCoordinator(DataUpdateCoordinator):
     """Central coordinator for Intelligent Heating Control."""
@@ -281,6 +284,12 @@ class IHCCoordinator(DataUpdateCoordinator):
 
         # v1.4 – Vacation calendar last-check (to avoid calling service every minute)
         self._vac_calendar_last_check: Optional[int] = None  # day-of-year
+
+        # TRV battery save: track last sent temperature per entity to avoid unnecessary updates
+        self._last_sent_temps: Dict[str, float] = {}  # entity_id → last sent temperature
+
+        # Manual TRV override detection: track last IHC-set temperature per room
+        self._last_ihc_set_temps: Dict[str, float] = {}  # room_id → last temp IHC intentionally set
 
         # Build sub-components from config
         self._rebuild_from_config()
@@ -1251,6 +1260,16 @@ class IHCCoordinator(DataUpdateCoordinator):
             total += (datetime.now() - started).total_seconds()
         return round(total / 60.0, 1)
 
+    def reset_runtime_stats(self) -> None:
+        """Reset today's heating runtime and energy statistics to zero."""
+        if self._heating_started_at is not None:
+            self._heating_started_at = datetime.now()  # restart session clock
+        self._heating_runtime_today = 0.0
+        self._room_runtime_today.clear()
+        for room_id in list(self._room_demand_started.keys()):
+            self._room_demand_started[room_id] = datetime.now()
+        _LOGGER.info("IHC: Runtime and energy stats reset by user.")
+
     def _calculate_room_energy_today(self, room: dict, room_id: str) -> float:
         """
         Calculate today's energy estimate for one room.
@@ -1859,14 +1878,23 @@ class IHCCoordinator(DataUpdateCoordinator):
             )
         )
 
-    def _set_valve_entity(self, valve_entity: str, target_temp: float) -> None:
-        """Set setpoint on a single TRV / climate entity."""
+    def _set_valve_entity(self, valve_entity: str, target_temp: float, force: bool = False) -> None:
+        """Set setpoint on a single TRV / climate entity.
+
+        Battery-save: only sends a new setpoint when the temperature differs
+        by more than TRV_TEMP_HYSTERESIS °C from the last sent value (unless force=True).
+        """
         if not valve_entity:
             return
         state = self.hass.states.get(valve_entity)
         if state is None:
             return
         if valve_entity.split(".")[0] == "climate":
+            # Battery-save hysteresis: skip if change is below threshold
+            last = self._last_sent_temps.get(valve_entity)
+            if not force and last is not None and abs(target_temp - last) < TRV_TEMP_HYSTERESIS:
+                return
+            self._last_sent_temps[valve_entity] = target_temp
             self.hass.async_create_task(
                 self.hass.services.async_call(
                     "climate",
@@ -1875,16 +1903,142 @@ class IHCCoordinator(DataUpdateCoordinator):
                 )
             )
 
-    def _set_valve_entities(self, room: dict, target_temp: float) -> None:
+    def _turn_off_valve_entity(self, valve_entity: str) -> None:
+        """Turn off a TRV climate entity (hvac_mode=off), or set frost temp as fallback."""
+        if not valve_entity:
+            return
+        state = self.hass.states.get(valve_entity)
+        if state is None:
+            return
+        if valve_entity.split(".")[0] == "climate":
+            hvac_modes = state.attributes.get("hvac_modes", [])
+            # Prefer setting hvac_mode to off (saves battery, no hunting)
+            if "off" in hvac_modes:
+                self._last_sent_temps.pop(valve_entity, None)  # force update when turning back on
+                self.hass.async_create_task(
+                    self.hass.services.async_call(
+                        "climate",
+                        "set_hvac_mode",
+                        {"entity_id": valve_entity, "hvac_mode": "off"},
+                    )
+                )
+            else:
+                # Fallback: set to frost protection temperature
+                frost_temp = self._get_frost_protection_temp()
+                self._set_valve_entity(valve_entity, frost_temp, force=True)
+
+    def _turn_on_valve_entity(self, valve_entity: str) -> None:
+        """Ensure TRV is in heat mode (turn on if it was set to off)."""
+        if not valve_entity:
+            return
+        state = self.hass.states.get(valve_entity)
+        if state is None:
+            return
+        if valve_entity.split(".")[0] == "climate":
+            current_hvac = state.state  # "off", "heat", "auto", etc.
+            if current_hvac == "off":
+                hvac_modes = state.attributes.get("hvac_modes", [])
+                preferred = "heat" if "heat" in hvac_modes else ("auto" if "auto" in hvac_modes else None)
+                if preferred:
+                    self.hass.async_create_task(
+                        self.hass.services.async_call(
+                            "climate",
+                            "set_hvac_mode",
+                            {"entity_id": valve_entity, "hvac_mode": preferred},
+                        )
+                    )
+
+    def _set_valve_entities(self, room: dict, target_temp: float, force: bool = False) -> None:
         """Set setpoint on all TRV / climate entities configured for a room."""
         # New: list of valve entities
         for entity in room.get(CONF_VALVE_ENTITIES, []):
             if entity:
-                self._set_valve_entity(entity, target_temp)
+                # Ensure TRV is in heat mode before setting temperature
+                self._turn_on_valve_entity(entity)
+                self._set_valve_entity(entity, target_temp, force=force)
         # Legacy: single valve entity
         single = room.get(CONF_VALVE_ENTITY)
         if single and single not in room.get(CONF_VALVE_ENTITIES, []):
-            self._set_valve_entity(single, target_temp)
+            self._turn_on_valve_entity(single)
+            self._set_valve_entity(single, target_temp, force=force)
+
+    def _turn_off_valve_entities(self, room: dict) -> None:
+        """Turn off all TRV entities for a room (window open / room off)."""
+        for entity in room.get(CONF_VALVE_ENTITIES, []):
+            if entity:
+                self._turn_off_valve_entity(entity)
+        single = room.get(CONF_VALVE_ENTITY)
+        if single and single not in room.get(CONF_VALVE_ENTITIES, []):
+            self._turn_off_valve_entity(single)
+
+    def _detect_manual_trv_override(self, room: dict, room_id: str, room_mode: str) -> None:
+        """Detect if a TRV was manually adjusted and switch room to manual mode.
+
+        Compares the TRV's reported target_temperature against the last value IHC set.
+        If they differ by more than TRV_TEMP_HYSTERESIS, a manual override is assumed.
+        """
+        valve_entities = list(room.get(CONF_VALVE_ENTITIES, []))
+        single = room.get(CONF_VALVE_ENTITY)
+        if single and single not in valve_entities:
+            valve_entities.append(single)
+
+        if not valve_entities:
+            return
+
+        for entity_id in valve_entities:
+            if not entity_id:
+                continue
+            state = self.hass.states.get(entity_id)
+            if state is None:
+                continue
+            trv_target = state.attributes.get("temperature")
+            if trv_target is None:
+                continue
+            trv_target = float(trv_target)
+            last_ihc = self._last_sent_temps.get(entity_id)
+            if last_ihc is None:
+                # First cycle – record current TRV temp as baseline
+                self._last_ihc_set_temps[room_id] = trv_target
+                continue
+            # If TRV temperature differs significantly from what IHC last sent, user adjusted it
+            if abs(trv_target - last_ihc) >= 0.5:
+                room_name = room.get(CONF_ROOM_NAME, room_id)
+                _LOGGER.info(
+                    "IHC: Manual TRV override detected in %s – TRV set to %.1f°C (IHC had %.1f°C). "
+                    "Switching to manual mode.",
+                    room_name, trv_target, last_ihc,
+                )
+                # Switch room to manual mode and record the manually set temperature
+                self.set_room_mode(room_id, ROOM_MODE_MANUAL)
+                self.set_room_manual_temp(room_id, trv_target)
+                # Update last sent temp to avoid re-triggering
+                self._last_sent_temps[entity_id] = trv_target
+                # Get next schedule time for notification message
+                next_period = self.get_next_schedule_period(room_id)
+                next_str = ""
+                if next_period:
+                    try:
+                        next_str = f" bis {next_period.get('start', '')} Uhr"
+                    except Exception:
+                        pass
+                # Send HA notification
+                self.hass.async_create_task(
+                    self.hass.services.async_call(
+                        "persistent_notification",
+                        "create",
+                        {
+                            "title": f"IHC: Manueller Eingriff – {room_name}",
+                            "message": (
+                                f"**{room_name}** wurde manuell am Gerät auf "
+                                f"**{trv_target:.1f} °C** gestellt "
+                                f"und bleibt bis zur nächsten Schaltzeit{next_str} im Modus **Manuell**.\n\n"
+                                "Der Modus wird beim nächsten Zeitplan-Event automatisch zurückgesetzt."
+                            ),
+                            "notification_id": f"ihc_manual_override_{room_id}",
+                        },
+                    )
+                )
+                break  # Only trigger once per update cycle per room
 
     # ------------------------------------------------------------------
     # Main update cycle
@@ -1984,6 +2138,10 @@ class IHCCoordinator(DataUpdateCoordinator):
                 target_temp = min(float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP)), target_temp + cold_boost)
                 meta["cold_boost"] = cold_boost
 
+            # Manual TRV override detection: if TRV was adjusted by hand, switch room to manual
+            if room_mode not in (ROOM_MODE_OFF, ROOM_MODE_MANUAL) and not window_open:
+                self._detect_manual_trv_override(room, room_id, room_mode)
+
             # Update controller state for this room
             controller_state = self._controller.update_room(
                 room_id=room_id,
@@ -2053,14 +2211,13 @@ class IHCCoordinator(DataUpdateCoordinator):
             room_data[room_id]["runtime_today_minutes"] = self.get_room_runtime_today_minutes(room_id)
 
         # Apply TRV setpoints and/or control heating switch
-        frost_temp = self._get_frost_protection_temp()
         if controller_mode == CONTROLLER_MODE_TRV:
             # TRV mode: each TRV self-regulates — always send the desired target temp.
             # The TRV opens/closes its valve based on its own thermostat (current vs target).
             # We do NOT suppress setpoints based on should_heat because:
             #   - There is no central boiler in TRV mode
             #   - TRVs decide themselves whether to heat
-            # Exception: room OFF or window open → send frost_temp to fully close the TRV.
+            # Exception: room OFF or window open → turn off TRV (or frost-protect as fallback).
             for room in self.get_rooms():
                 room_id = room.get(CONF_ROOM_ID, "")
                 if not room_id or room_id not in room_data:
@@ -2069,8 +2226,8 @@ class IHCCoordinator(DataUpdateCoordinator):
                 room_mode = rdata.get("room_mode", ROOM_MODE_AUTO)
                 window_open = rdata.get("window_open", False)
                 if window_open or room_mode == ROOM_MODE_OFF:
-                    # Fully close TRV
-                    self._set_valve_entities(room, frost_temp)
+                    # Turn TRV off (or frost-protect if off mode not supported)
+                    self._turn_off_valve_entities(room)
                 else:
                     # Always send the desired target – TRV decides whether to heat
                     self._set_valve_entities(room, rdata["target_temp"])
@@ -2084,7 +2241,10 @@ class IHCCoordinator(DataUpdateCoordinator):
                 rdata = room_data[room_id]
                 room_mode = rdata.get("room_mode", ROOM_MODE_AUTO)
                 window_open = rdata.get("window_open", False)
-                if not window_open and room_mode != ROOM_MODE_OFF:
+                if window_open or room_mode == ROOM_MODE_OFF:
+                    # Switch mode: turn off TRVs when window open or room off
+                    self._turn_off_valve_entities(room)
+                else:
                     self._set_valve_entities(room, rdata["target_temp"])
             self._set_heating_switch(should_heat)
 
@@ -2283,7 +2443,7 @@ class IHCCoordinator(DataUpdateCoordinator):
         return room_config[CONF_ROOM_ID]
 
     async def async_remove_room(self, room_id: str) -> None:
-        """Remove a room by ID."""
+        """Remove a room by ID and clean up all associated entities from the registry."""
         new_options = dict(self._config_entry.options)
         rooms = [r for r in new_options.get(CONF_ROOMS, []) if r.get(CONF_ROOM_ID) != room_id]
         new_options[CONF_ROOMS] = rooms
@@ -2293,6 +2453,24 @@ class IHCCoordinator(DataUpdateCoordinator):
         self._room_modes.pop(room_id, None)
         self._room_manual_temps.pop(room_id, None)
         self._schedule_managers.pop(room_id, None)
+
+        # Remove all HA entities associated with this room from the entity registry
+        try:
+            registry = er.async_get(self.hass)
+            entry_id = self._config_entry.entry_id
+            # Find all entities for this config entry that belong to this room
+            # Unique IDs follow the pattern: {entry_id}_room_{room_id}*
+            room_uid_prefix = f"{entry_id}_room_{room_id}"
+            entities_to_remove = [
+                entity for entity in er.async_entries_for_config_entry(registry, entry_id)
+                if entity.unique_id and entity.unique_id.startswith(room_uid_prefix)
+            ]
+            for entity_entry in entities_to_remove:
+                registry.async_remove(entity_entry.entity_id)
+                _LOGGER.debug("IHC: Removed entity %s for deleted room %s", entity_entry.entity_id, room_id)
+        except Exception as exc:
+            _LOGGER.warning("IHC: Could not clean up entities for room %s: %s", room_id, exc)
+
         self._rebuild_from_config()
         await self.async_request_refresh()
 

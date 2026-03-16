@@ -266,14 +266,7 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
         errors: dict = {}
 
         if user_input is not None:
-            enable_cooling = user_input.get(CONF_ENABLE_COOLING, False)
-            if enable_cooling:
-                cooling_switch = user_input.get(CONF_COOLING_SWITCH, "")
-                if not cooling_switch:
-                    errors[CONF_COOLING_SWITCH] = "entity_not_found"
-                elif self.hass.states.get(cooling_switch) is None:
-                    errors[CONF_COOLING_SWITCH] = "entity_not_found"
-            else:
+            if not user_input.get(CONF_ENABLE_COOLING, False):
                 user_input[CONF_COOLING_SWITCH] = ""
 
             if not errors:
@@ -285,11 +278,11 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_OUTDOOR_TEMP_SENSOR,
                 default=cfg.get(CONF_OUTDOOR_TEMP_SENSOR, "")
-            ): selector.selector({"entity": {"domain": "sensor"}}),
+            ): selector.selector({"text": {}}),
             vol.Optional(
                 CONF_HEATING_SWITCH,
                 default=cfg.get(CONF_HEATING_SWITCH, "")
-            ): selector.selector({"entity": {"domain": ["switch", "input_boolean"]}}),
+            ): selector.selector({"text": {}}),
             vol.Optional(
                 CONF_ENABLE_COOLING,
                 default=bool(enable_cooling_current)
@@ -298,7 +291,7 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
         if enable_cooling_current:
             cooling_default = (user_input or cfg).get(CONF_COOLING_SWITCH, "")
             schema_dict[vol.Optional(CONF_COOLING_SWITCH, default=cooling_default)] = selector.selector(
-                {"entity": {"domain": ["switch", "input_boolean"]}}
+                {"text": {}}
             )
         schema_dict.update({
             vol.Optional(
@@ -385,7 +378,7 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_SUN_ENTITY,
                 default=cfg.get(CONF_SUN_ENTITY, "sun.sun")
-            ): selector.selector({"entity": {"domain": "sun"}}),
+            ): selector.selector({"text": {}}),
             # --- Pre-heat window ---
             vol.Optional(
                 CONF_PREHEAT_MINUTES,
@@ -509,10 +502,6 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
         """Add a new room."""
         errors: dict = {}
         if user_input is not None:
-            temp_sensor = user_input.get(CONF_TEMP_SENSOR, "")
-            if temp_sensor and self.hass.states.get(temp_sensor) is None:
-                errors[CONF_TEMP_SENSOR] = "entity_not_found"
-
             if not errors:
                 single_valve = user_input.get(CONF_VALVE_ENTITY, "")
                 single_window = user_input.get(CONF_WINDOW_SENSOR, "")
@@ -546,15 +535,9 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
 
         schema = vol.Schema({
             vol.Required(CONF_ROOM_NAME): str,
-            vol.Optional(CONF_TEMP_SENSOR, default=""): selector.selector({
-                "entity": {"domain": "sensor"}
-            }),
-            vol.Optional(CONF_VALVE_ENTITY, default=""): selector.selector({
-                "entity": {"domain": "climate"}
-            }),
-            vol.Optional(CONF_WINDOW_SENSOR, default=""): selector.selector({
-                "entity": {"domain": "binary_sensor"}
-            }),
+            vol.Optional(CONF_TEMP_SENSOR, default=""): selector.selector({"text": {}}),
+            vol.Optional(CONF_VALVE_ENTITY, default=""): selector.selector({"text": {}}),
+            vol.Optional(CONF_WINDOW_SENSOR, default=""): selector.selector({"text": {}}),
             vol.Optional(CONF_ROOM_OFFSET, default=0.0): selector.selector({
                 "number": {"min": -5, "max": 5, "step": 0.5, "unit_of_measurement": "°C", "mode": "slider"}
             }),
@@ -628,15 +611,9 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
 
         schema = vol.Schema({
             vol.Optional(CONF_ROOM_NAME, default=room.get(CONF_ROOM_NAME, "")): str,
-            vol.Optional(CONF_TEMP_SENSOR, default=room.get(CONF_TEMP_SENSOR, "")): selector.selector({
-                "entity": {"domain": "sensor"}
-            }),
-            vol.Optional(CONF_VALVE_ENTITY, default=room.get(CONF_VALVE_ENTITY, "")): selector.selector({
-                "entity": {"domain": "climate"}
-            }),
-            vol.Optional(CONF_WINDOW_SENSOR, default=room.get(CONF_WINDOW_SENSOR, "")): selector.selector({
-                "entity": {"domain": "binary_sensor"}
-            }),
+            vol.Optional(CONF_TEMP_SENSOR, default=room.get(CONF_TEMP_SENSOR, "")): selector.selector({"text": {}}),
+            vol.Optional(CONF_VALVE_ENTITY, default=room.get(CONF_VALVE_ENTITY, "")): selector.selector({"text": {}}),
+            vol.Optional(CONF_WINDOW_SENSOR, default=room.get(CONF_WINDOW_SENSOR, "")): selector.selector({"text": {}}),
             vol.Optional(CONF_ROOM_OFFSET, default=float(room.get(CONF_ROOM_OFFSET, 0.0))): selector.selector({
                 "number": {"min": -5, "max": 5, "step": 0.5, "unit_of_measurement": "°C", "mode": "slider"}
             }),
