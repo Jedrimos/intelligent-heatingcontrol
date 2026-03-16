@@ -193,7 +193,11 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "mold_protection_enabled": room_cfg.get("mold_protection_enabled", True),
             "mold": d.get("mold"),
             # Presence
+            "room_presence_entities": room_cfg.get("room_presence_entities", []),
             "room_presence_active": d.get("room_presence_active"),
+            # Boost config
+            "boost_temp": room_cfg.get("boost_temp"),
+            "boost_default_duration": room_cfg.get("boost_default_duration", 60),
             # Ventilation advice + CO2
             "co2_sensor": room_cfg.get("co2_sensor", ""),
             "co2_threshold_good": room_cfg.get("co2_threshold_good", 800),

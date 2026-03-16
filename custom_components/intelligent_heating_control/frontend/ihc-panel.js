@@ -298,6 +298,20 @@ const STYLES = `
   .modal-section { border-top: 1px solid var(--divider-color, #e0e0e0); margin-top: 16px; padding-top: 16px; }
   .modal-section-title { font-size: 12px; font-weight: 700; text-transform: uppercase;
                           letter-spacing: 0.6px; color: var(--secondary-text-color); margin-bottom: 10px; }
+  /* Force single-column grid inside modals to prevent entity picker covering adjacent columns */
+  .modal .settings-grid { grid-template-columns: 1fr; }
+  /* Collapsible advanced sections within modal */
+  .modal-collapsible { border-top: 1px solid var(--divider-color, #e0e0e0); margin-top: 16px; }
+  .modal-collapsible > summary {
+    padding: 14px 0; cursor: pointer; list-style: none;
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; color: var(--secondary-text-color);
+    display: flex; align-items: center; gap: 6px; user-select: none;
+  }
+  .modal-collapsible > summary::before { content: "▸"; font-size: 11px; transition: transform 0.15s; }
+  .modal-collapsible[open] > summary::before { content: "▾"; }
+  .modal-collapsible > summary:hover { color: var(--primary-color); }
+  .modal-collapsible .modal-collapsible-body { padding-bottom: 4px; }
 
   /* Toast */
   .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
@@ -620,6 +634,14 @@ class IHCPanel extends HTMLElement {
         hkv_sensor: state.attributes.hkv_sensor || "",
         hkv_factor: state.attributes.hkv_factor ?? 0.083,
         energy_today_kwh: state.attributes.energy_today_kwh ?? 0,
+        // Presence (per-room)
+        room_presence_entities: state.attributes.room_presence_entities || [],
+        // Humidity & mold
+        humidity_sensor: state.attributes.humidity_sensor || "",
+        mold_protection_enabled: state.attributes.mold_protection_enabled !== false,
+        // Boost config
+        boost_temp: state.attributes.boost_temp ?? null,
+        boost_default_duration: state.attributes.boost_default_duration ?? 60,
       };
     });
     // Enrich from demand sensors
@@ -705,6 +727,7 @@ class IHCPanel extends HTMLElement {
       eta_preheat_minutes:       a.eta_preheat_minutes != null ? parseFloat(a.eta_preheat_minutes) : null,
       adaptive_curve_delta:      a.adaptive_curve_delta != null ? parseFloat(a.adaptive_curve_delta) : 0,
       outdoor_humidity:          a.outdoor_humidity != null ? parseFloat(a.outdoor_humidity) : null,
+      static_energy_price:       a.static_energy_price != null ? parseFloat(a.static_energy_price) : null,
     };
   }
 
@@ -873,7 +896,16 @@ class IHCPanel extends HTMLElement {
           </div>
           ${room.next_period && !room.schedule_active ? `<div style="font-size:10px;color:var(--secondary-text-color);margin-top:4px">📅 Nächster Zeitplan: ${room.next_period.start}–${room.next_period.end} · ${room.next_period.temperature}°C</div>` : ""}
           <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
-            ${localStorage.getItem("ihc_show_energy") !== "false" && room.runtime_today_minutes > 0 ? `<span style="font-size:10px;color:var(--secondary-text-color)">⏱ ${room.runtime_today_minutes} min${room.energy_today_kwh > 0 ? ` · ~${this._kwh(room.energy_today_kwh)} kWh` : ""}</span>` : "<span></span>"}
+            ${(() => {
+              const showRuntime = localStorage.getItem("ihc_show_runtime") !== "false";
+              const showCosts   = localStorage.getItem("ihc_show_costs") !== "false";
+              if (!showRuntime && !showCosts) return "<span></span>";
+              if (room.runtime_today_minutes <= 0) return "<span></span>";
+              const parts = [];
+              if (showRuntime) parts.push(`⏱ ${room.runtime_today_minutes} min`);
+              if (showCosts && room.energy_today_kwh > 0) parts.push(this._costStr(room.energy_today_kwh, g.static_energy_price));
+              return `<span style="font-size:10px;color:var(--secondary-text-color)">${parts.join(" · ")}</span>`;
+            })()}
             ${room.avg_warmup_minutes ? `<span style="font-size:10px;color:var(--secondary-text-color)" title="Ø Aufheizzeit">🌡️ Ø ${room.avg_warmup_minutes} min</span>` : ""}
             ${this._sparkline(room.temp_history)}
           </div>
@@ -927,7 +959,15 @@ class IHCPanel extends HTMLElement {
         <div class="hero-card">
           <div class="hero-label">Gesamtanforderung</div>
           <div class="hero-value ${demandCls}">${demandNum}</div>
-          ${localStorage.getItem("ihc_show_energy") !== "false" ? `<div class="hero-sub">⏱ ${g.heating_runtime_today} min · ${this._kwh(g.energy_today_kwh)} kWh</div>` : ""}
+          ${(() => {
+            const showRuntime = localStorage.getItem("ihc_show_runtime") !== "false";
+            const showCosts   = localStorage.getItem("ihc_show_costs") !== "false";
+            if (!showRuntime && !showCosts) return "";
+            const parts = [];
+            if (showRuntime) parts.push(`⏱ ${g.heating_runtime_today} min`);
+            if (showCosts) parts.push(this._costStr(g.energy_today_kwh, g.static_energy_price));
+            return `<div class="hero-sub">${parts.join(" · ")}</div>`;
+          })()}
         </div>
         <div class="hero-card" style="justify-content:space-between">
           <div class="hero-label">Systemmodus</div>
@@ -964,7 +1004,7 @@ class IHCPanel extends HTMLElement {
         </div>` : ""}
         ${localStorage.getItem("ihc_show_energy") !== "false" && g.heating_runtime_yesterday > 0 ? `<div class="status-item" title="Gestriger Verbrauch">
           <div class="status-label">Gestern</div>
-          <div class="status-value ${g.energy_today_kwh > g.energy_yesterday_kwh ? "on" : "ok"}" style="font-size:15px">${this._kwh(g.energy_yesterday_kwh)} kWh</div>
+          <div class="status-value ${g.energy_today_kwh > g.energy_yesterday_kwh ? "on" : "ok"}" style="font-size:15px">${this._costStr(g.energy_yesterday_kwh, g.static_energy_price)}</div>
         </div>` : ""}
         ${g.weather_forecast ? (() => {
           const fc = g.weather_forecast;
@@ -1489,17 +1529,30 @@ class IHCPanel extends HTMLElement {
         <div class="ihc-card-body">
           <div class="settings-grid">
             <div class="settings-item">
-              <label>Energie & Laufzeit anzeigen</label>
-              <select class="form-select" id="show-energy-stats">
-                <option value="true"  ${localStorage.getItem("ihc_show_energy") !== "false" ? "selected" : ""}>Aktiviert</option>
-                <option value="false" ${localStorage.getItem("ihc_show_energy") === "false"  ? "selected" : ""}>Deaktiviert</option>
+              <label>Laufzeit anzeigen</label>
+              <select class="form-select" id="show-runtime-stats">
+                <option value="true"  ${localStorage.getItem("ihc_show_runtime") !== "false" ? "selected" : ""}>Aktiviert</option>
+                <option value="false" ${localStorage.getItem("ihc_show_runtime") === "false"  ? "selected" : ""}>Deaktiviert</option>
               </select>
-              <span class="form-hint">Heizlaufzeit &amp; kWh im Dashboard anzeigen</span>
+              <span class="form-hint">Heizlaufzeit (min) im Dashboard anzeigen</span>
+            </div>
+            <div class="settings-item">
+              <label>Kosten / kWh anzeigen</label>
+              <select class="form-select" id="show-cost-stats">
+                <option value="true"  ${localStorage.getItem("ihc_show_costs") !== "false" ? "selected" : ""}>Aktiviert</option>
+                <option value="false" ${localStorage.getItem("ihc_show_costs") === "false"  ? "selected" : ""}>Deaktiviert</option>
+              </select>
+              <span class="form-hint">Geschätzte kWh / Kosten im Dashboard anzeigen</span>
             </div>
             <div class="settings-item">
               <label>Kesselleistung (kW)</label>
               <input type="number" class="form-input" id="boiler-kw" min="1" max="100" step="1" value="${a.boiler_kw ?? 20}">
               <span class="form-hint">Für kWh-Berechnung (Laufzeit × kW)</span>
+            </div>
+            <div class="settings-item">
+              <label>Statischer Energiepreis (€/kWh) <span style="font-size:10px;color:var(--secondary-text-color)">(optional)</span></label>
+              <input type="number" class="form-input" id="static-energy-price" min="0.01" max="2" step="0.01" value="${a.static_energy_price ?? ''}" placeholder="z.B. 0.09 (leer = nur kWh)">
+              <span class="form-hint">Wenn kein Preis-Sensor: fester Preis für Kostenberechnung</span>
             </div>
             <div class="settings-item">
               <label>Smart-Meter-Sensor (kWh)</label>
@@ -1899,10 +1952,14 @@ class IHCPanel extends HTMLElement {
       });
     }
 
-    // Energy stats visibility toggle – stored in localStorage (frontend-only)
-    content.querySelector("#show-energy-stats").addEventListener("change", e => {
-      localStorage.setItem("ihc_show_energy", e.target.value);
-      this._toast(e.target.value === "true" ? "✓ Energie-Stats aktiviert" : "✓ Energie-Stats deaktiviert");
+    // Runtime / costs visibility toggles – stored in localStorage (frontend-only)
+    content.querySelector("#show-runtime-stats").addEventListener("change", e => {
+      localStorage.setItem("ihc_show_runtime", e.target.value);
+      this._toast(e.target.value === "true" ? "✓ Laufzeit-Anzeige aktiviert" : "✓ Laufzeit-Anzeige deaktiviert");
+    });
+    content.querySelector("#show-cost-stats").addEventListener("change", e => {
+      localStorage.setItem("ihc_show_costs", e.target.value);
+      this._toast(e.target.value === "true" ? "✓ Kostenanzeige aktiviert" : "✓ Kostenanzeige deaktiviert");
     });
 
     content.querySelector("#save-energy-settings").addEventListener("click", () => {
@@ -1912,6 +1969,7 @@ class IHCPanel extends HTMLElement {
       const priceThresh  = parseFloat(content.querySelector("#energy-price-threshold").value);
       const priceEco     = parseFloat(content.querySelector("#energy-price-eco-offset").value);
       if ([boilerKw, solarSurplus, solarBoost, priceThresh, priceEco].some(isNaN)) { this._toast("⚠️ Ungültiger Wert"); return; }
+      const staticPrice = parseFloat(content.querySelector("#static-energy-price").value);
       this._callService("update_global_settings", {
         boiler_kw:               boilerKw,
         flow_temp_entity:        content.querySelector("#flow-temp-entity").value.trim(),
@@ -1924,6 +1982,7 @@ class IHCPanel extends HTMLElement {
         energy_price_eco_offset: priceEco,
         smart_meter_entity:      content.querySelector("#smart-meter-entity").value.trim(),
         cooling_target_temp:     parseFloat(content.querySelector("#cooling-target-temp").value) || 24,
+        ...((!isNaN(staticPrice) && staticPrice > 0) ? { static_energy_price: staticPrice } : {}),
       });
       this._toast("✓ Energie/Solar-Einstellungen gespeichert");
     });
@@ -2924,134 +2983,139 @@ class IHCPanel extends HTMLElement {
         </div>
       </div>
 
-      <div class="modal-section">
-        <div class="modal-section-title">Erweitert</div>
-        <div class="settings-grid">
-          <div class="settings-item">
-            <label>Zimmer-Offset (°C)</label>
-            <input type="number" class="form-input" id="m-offset" value="${room.room_offset}" step="0.5" min="-5" max="5">
-          </div>
-          <div class="settings-item">
-            <label>Totband (°C)</label>
-            <input type="number" class="form-input" id="m-deadband" value="${room.deadband}" step="0.1" min="0.1" max="2">
-          </div>
-          <div class="settings-item">
-            <label>Gewichtung</label>
-            <input type="number" class="form-input" id="m-weight" value="${room.weight}" step="0.1" min="0.1" max="5">
+      <details class="modal-collapsible">
+        <summary>Erweitert</summary>
+        <div class="modal-collapsible-body">
+          <div class="settings-grid">
+            <div class="settings-item">
+              <label>Zimmer-Offset (°C)</label>
+              <input type="number" class="form-input" id="m-offset" value="${room.room_offset}" step="0.5" min="-5" max="5">
+            </div>
+            <div class="settings-item">
+              <label>Totband (°C)</label>
+              <input type="number" class="form-input" id="m-deadband" value="${room.deadband}" step="0.1" min="0.1" max="2">
+            </div>
+            <div class="settings-item">
+              <label>Gewichtung</label>
+              <input type="number" class="form-input" id="m-weight" value="${room.weight}" step="0.1" min="0.1" max="5">
+            </div>
           </div>
         </div>
-      </div>
+      </details>
 
-      <div class="modal-section">
-        <div class="modal-section-title">👤 Zimmer-Anwesenheit</div>
-        <div style="font-size:11px;color:var(--secondary-text-color);margin-bottom:8px">
-          Wenn konfiguriert: Zimmer wechselt auf Abwesend-Temperatur wenn niemand anwesend.
-          Kommagetrennte Liste von <code>person.*</code> / <code>device_tracker.*</code> Entitäten.
-        </div>
-        <div class="settings-item">
-          <label>Anwesenheits-Entitäten</label>
-          <input type="text" class="form-input" id="m-presence-entities"
-            value="${(room.room_presence_entities || []).join(', ')}"
-            placeholder="person.max, device_tracker.handy (leer = immer anwesend)"
-            data-ep-domains="person,device_tracker,input_boolean,binary_sensor" autocomplete="off">
-        </div>
-      </div>
-
-      <div class="modal-section">
-        <div class="modal-section-title">🌬️ Lüftung &amp; Schimmelschutz</div>
-        <div class="settings-grid">
+      <details class="modal-collapsible" ${room.room_presence_entities?.length ? "open" : ""}>
+        <summary>👤 Zimmer-Anwesenheit</summary>
+        <div class="modal-collapsible-body">
           <div class="settings-item">
-            <label>Feuchtigkeitssensor</label>
-            <input type="text" class="form-input" id="m-humidity-sensor"
-              value="${room.humidity_sensor || ''}" placeholder="sensor.feuchte (optional)"
-              data-ep-domains="sensor" autocomplete="off">
-            <span class="form-hint">Schimmelrisiko-Erkennung &amp; Lüftungsempfehlung</span>
+            <label>Anwesenheits-Entitäten</label>
+            <input type="text" class="form-input" id="m-presence-entities"
+              value="${(room.room_presence_entities || []).join(', ')}"
+              placeholder="person.max, device_tracker.handy (leer = immer anwesend)"
+              data-ep-domains="person,device_tracker,input_boolean,binary_sensor" autocomplete="off">
+            <span class="form-hint">Zimmer wechselt auf Abwesend-Temperatur wenn niemand da</span>
           </div>
-          <div class="settings-item">
-            <label>Schimmelschutz</label>
-            <select class="form-select" id="m-mold-protection">
-              <option value="true" ${room.mold_protection_enabled !== false ? "selected" : ""}>Aktiviert</option>
-              <option value="false" ${room.mold_protection_enabled === false ? "selected" : ""}>Deaktiviert</option>
+        </div>
+      </details>
+
+      <details class="modal-collapsible" ${room.humidity_sensor || room.co2_sensor ? "open" : ""}>
+        <summary>🌬️ Lüftung &amp; Schimmelschutz</summary>
+        <div class="modal-collapsible-body">
+          <div class="settings-grid">
+            <div class="settings-item">
+              <label>Feuchtigkeitssensor</label>
+              <input type="text" class="form-input" id="m-humidity-sensor"
+                value="${room.humidity_sensor || ''}" placeholder="sensor.feuchte (optional)"
+                data-ep-domains="sensor" autocomplete="off">
+              <span class="form-hint">Schimmelrisiko-Erkennung &amp; Lüftungsempfehlung</span>
+            </div>
+            <div class="settings-item">
+              <label>Schimmelschutz</label>
+              <select class="form-select" id="m-mold-protection">
+                <option value="true" ${room.mold_protection_enabled !== false ? "selected" : ""}>Aktiviert</option>
+                <option value="false" ${room.mold_protection_enabled === false ? "selected" : ""}>Deaktiviert</option>
+              </select>
+            </div>
+            <div class="settings-item">
+              <label>CO₂-Sensor <em style="font-weight:400">(optional)</em></label>
+              <input type="text" class="form-input" id="m-co2-sensor"
+                value="${room.co2_sensor || ''}" placeholder="sensor.co2_wohnzimmer (optional)"
+                data-ep-domains="sensor" autocomplete="off">
+              <span class="form-hint">ppm → Lüftungsempfehlung (800 ppm gut, >1200 lüften)</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="modal-collapsible" ${room.hkv_sensor || room.radiator_kw !== 1.0 ? "open" : ""}>
+        <summary>⚡ Energieerfassung</summary>
+        <div class="modal-collapsible-body">
+          <p style="font-size:11px;color:var(--secondary-text-color);margin:0 0 10px">
+            TRV-Modus: Verbrauch = Laufzeit × Heizleistung. Mit HKV-Sensor wird der Zähler direkt gelesen.
+          </p>
+          <div class="settings-grid">
+            <div class="settings-item">
+              <label>Heizleistung Zimmer (kW)</label>
+              <input type="number" class="form-input" id="m-radiator-kw"
+                value="${room.radiator_kw ?? 1.0}" step="0.1" min="0.1" max="5.0">
+              <span class="form-hint">Nennleistung aller Heizkörper im Zimmer</span>
+            </div>
+            <div class="settings-item">
+              <label>HKV-Sensor (optional)</label>
+              <input type="text" class="form-input" id="m-hkv-sensor"
+                value="${room.hkv_sensor || ''}" placeholder="sensor.hkv_wohnzimmer"
+                data-ep-domains="sensor" autocomplete="off">
+              <span class="form-hint">Ista / Techem / Wireless M-Bus Einheitenzähler</span>
+            </div>
+            <div class="settings-item">
+              <label>HKV-Faktor (kWh/Einheit)</label>
+              <input type="number" class="form-input" id="m-hkv-factor"
+                value="${room.hkv_factor ?? 0.083}" step="0.001" min="0.001" max="1.0">
+              <span class="form-hint">Aus der Jahresabrechnung: Gesamtenergie ÷ Gesamteinheiten</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="modal-collapsible" ${room.ha_schedules?.length ? "open" : ""}>
+        <summary>📅 HA Zeitpläne <span style="font-weight:400;font-size:10px;margin-left:6px">(optional)</span></summary>
+        <div class="modal-collapsible-body">
+          <p style="font-size:11px;color:var(--secondary-text-color);margin:0 0 10px">
+            Verbindet HA <code>schedule.*</code>-Entitäten — wenn aktiv, wird die gewählte Temperatur (Komfort/Eco/Schlaf) verwendet.
+          </p>
+          <div class="settings-item" style="margin-bottom:10px">
+            <label>Wenn kein Zeitplan aktiv</label>
+            <select class="form-select" id="m-sched-off-mode">
+              <option value="eco"   ${(typeof room !== 'undefined' ? room.ha_schedule_off_mode : 'eco') === 'eco'   ? 'selected' : ''}>Eco-Temperatur</option>
+              <option value="sleep" ${(typeof room !== 'undefined' ? room.ha_schedule_off_mode : 'eco') === 'sleep' ? 'selected' : ''}>Schlaf-Temperatur</option>
             </select>
           </div>
-          <div class="settings-item">
-            <label>CO₂-Sensor <em style="font-weight:400">(optional)</em></label>
-            <input type="text" class="form-input" id="m-co2-sensor"
-              value="${room.co2_sensor || ''}" placeholder="sensor.co2_wohnzimmer (optional)"
-              data-ep-domains="sensor" autocomplete="off">
-            <span class="form-hint">ppm → Lüftungsempfehlung (800 ppm gut, >1200 ppm lüften)</span>
-          </div>
+          <div id="m-ha-sched-list"></div>
+          <button class="btn btn-secondary" id="m-add-ha-sched" style="font-size:12px;margin-top:6px">+ Zeitplan hinzufügen</button>
         </div>
-      </div>
+      </details>
 
-      <div class="modal-section">
-        <div class="modal-section-title">Energieerfassung</div>
-        <div style="font-size:11px;color:var(--secondary-text-color);margin-bottom:10px">
-          TRV-Modus: Verbrauch = Anforderungszeit × Heizleistung.
-          Mit HKV-Sensor (Heizkostenverteiler, z.B. Wireless M-Bus) wird der Zählerwert direkt ausgelesen.
-        </div>
-        <div class="settings-grid">
-          <div class="settings-item">
-            <label>Heizleistung Zimmer (kW)</label>
-            <input type="number" class="form-input" id="m-radiator-kw"
-              value="${room.radiator_kw ?? 1.0}" step="0.1" min="0.1" max="5.0">
-            <span class="form-hint">Nennleistung aller Heizkörper im Zimmer</span>
+      <details class="modal-collapsible">
+        <summary>⚡ Boost</summary>
+        <div class="modal-collapsible-body">
+          <div class="settings-grid" style="margin-bottom:10px">
+            <div class="settings-item">
+              <label>Boost-Temperatur (°C)</label>
+              <input type="number" class="form-input" id="m-boost-temp"
+                value="${room.boost_temp ?? room.comfort_temp ?? 22}" min="15" max="35" step="0.5">
+              <span class="form-hint">Zieltemperatur während Boost (leer = Komfort)</span>
+            </div>
+            <div class="settings-item">
+              <label>Boost-Dauer (min)</label>
+              <input type="number" class="form-input" id="m-boost-dur"
+                value="${room.boost_default_duration ?? 60}" min="5" max="480" step="5">
+            </div>
           </div>
-          <div class="settings-item">
-            <label>HKV-Sensor (optional)</label>
-            <input type="text" class="form-input" id="m-hkv-sensor"
-              value="${room.hkv_sensor || ''}" placeholder="sensor.hkv_wohnzimmer"
-              data-ep-domains="sensor" autocomplete="off">
-            <span class="form-hint">Ista / Techem / Wireless M-Bus Einheitenzähler</span>
-          </div>
-          <div class="settings-item">
-            <label>HKV-Faktor (kWh/Einheit)</label>
-            <input type="number" class="form-input" id="m-hkv-factor"
-              value="${room.hkv_factor ?? 0.083}" step="0.001" min="0.001" max="1.0">
-            <span class="form-hint">Aus der Jahresabrechnung: Gesamtenergie ÷ Gesamteinheiten</span>
+          <div class="form-row" style="gap:8px">
+            <button class="btn btn-secondary" id="m-boost-btn">⚡ Boost starten</button>
+            ${room.boost_remaining > 0 ? `<button class="btn btn-danger" id="m-boost-cancel-btn">✕ Boost beenden (${room.boost_remaining} min übrig)</button>` : ""}
           </div>
         </div>
-      </div>
-
-      <div class="modal-section">
-        <div class="modal-section-title">📅 HA Zeitpläne <span style="font-weight:400;font-size:10px">(optional)</span></div>
-        <div style="font-size:11px;color:var(--secondary-text-color);margin-bottom:10px">
-          Verbindet bestehende HA <code>schedule.*</code>-Entitäten mit diesem Zimmer.
-          Wenn ein Zeitplan aktiv ist, wird die gewählte Temperatur (Komfort/Eco/Schlaf) verwendet.
-          Wenn kein Zeitplan aktiv ist, wird die unten gewählte Temperatur verwendet. Bedingung optional.
-        </div>
-        <div class="settings-item" style="margin-bottom:10px">
-          <label>Wenn kein Zeitplan aktiv</label>
-          <select class="form-select" id="m-sched-off-mode">
-            <option value="eco"   ${(typeof room !== 'undefined' ? room.ha_schedule_off_mode : 'eco') === 'eco'   ? 'selected' : ''}>Eco-Temperatur</option>
-            <option value="sleep" ${(typeof room !== 'undefined' ? room.ha_schedule_off_mode : 'eco') === 'sleep' ? 'selected' : ''}>Schlaf-Temperatur</option>
-          </select>
-        </div>
-        <!-- schedule/condition rows use data-ep-domains via _createHaScheduleRow -->
-        <div id="m-ha-sched-list"></div>
-        <button class="btn btn-secondary" id="m-add-ha-sched" style="font-size:12px;margin-top:6px">+ Zeitplan hinzufügen</button>
-      </div>
-
-      <div class="modal-section">
-        <div class="modal-section-title">⚡ Boost</div>
-        <div class="settings-grid" style="margin-bottom:10px">
-          <div class="settings-item">
-            <label>Boost-Temperatur (°C)</label>
-            <input type="number" class="form-input" id="m-boost-temp"
-              value="${room.boost_temp ?? room.comfort_temp ?? 22}" min="15" max="35" step="0.5">
-            <span class="form-hint">Zieltemperatur während Boost (leer = Komfort)</span>
-          </div>
-          <div class="settings-item">
-            <label>Boost-Dauer (min)</label>
-            <input type="number" class="form-input" id="m-boost-dur"
-              value="${room.boost_default_duration ?? 60}" min="5" max="480" step="5">
-          </div>
-        </div>
-        <div class="form-row" style="gap:8px">
-          <button class="btn btn-secondary" id="m-boost-btn">⚡ Boost starten</button>
-          ${room.boost_remaining > 0 ? `<button class="btn btn-danger" id="m-boost-cancel-btn">✕ Boost beenden (${room.boost_remaining} min übrig)</button>` : ""}
-        </div>
-      </div>
+      </details>
 
       <div class="btn-row">
         <button class="btn btn-primary" id="modal-confirm">💾 Speichern</button>
@@ -3283,8 +3347,17 @@ class IHCPanel extends HTMLElement {
   // Applies the user-set calibration factor (stored in localStorage) to kWh values.
   _kwh(raw) {
     const factor = parseFloat(localStorage.getItem("ihc_energy_factor") || "1") || 1;
-    const corrected = raw * factor;
-    return Math.round(corrected * 10) / 10;
+    return Math.round(raw * factor * 10) / 10;
+  }
+
+  // Returns the "costs" display string: "X kWh" or "X kWh · Y €" if static price configured.
+  // price = optional override (from room radiator_kw etc), falls back to global static_energy_price.
+  _costStr(rawKwh, staticPrice) {
+    const kwh = this._kwh(rawKwh);
+    const parts = [`~${kwh} kWh`];
+    const price = staticPrice ?? parseFloat(localStorage.getItem("ihc_static_price") || "") || null;
+    if (price && kwh > 0) parts.push(`≈ ${(kwh * price).toFixed(2)} €`);
+    return parts.join(" · ");
   }
 
   // ── Toast ──────────────────────────────────────────────────────────────────
