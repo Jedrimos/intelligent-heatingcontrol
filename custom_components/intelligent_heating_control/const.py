@@ -53,8 +53,12 @@ CONF_AWAY_TEMP_ROOM: Final = "away_temp_room"
 CONF_WINDOW_SENSOR: Final = "window_sensor"
 CONF_WINDOW_SENSORS: Final = "window_sensors"   # list – mehrere Fenstersensoren
 CONF_WINDOW_OPEN_TEMP: Final = "window_open_temp"
-CONF_WINDOW_REACTION_TIME: Final = "window_reaction_time"
+CONF_WINDOW_REACTION_TIME: Final = "window_reaction_time"   # seconds open before reacting (per room)
+CONF_WINDOW_CLOSE_DELAY: Final = "window_close_delay"       # seconds after close before resuming (per room)
 CONF_VALVE_ENTITIES: Final = "valve_entities"   # list – mehrere Thermostate/TRVs
+CONF_ABSOLUTE_MIN_TEMP: Final = "absolute_min_temp"  # per-room hard floor – setpoint never goes below this
+CONF_ROOM_QM: Final = "room_qm"                      # room area in m² (for preheat/weight/energy)
+CONF_ROOM_PREHEAT_MINUTES: Final = "room_preheat_minutes"  # per-room preheat override (-1 = use global/auto)
 CONF_ECO_OFFSET: Final = "eco_offset"              # °C below comfort/curve target
 CONF_SLEEP_OFFSET: Final = "sleep_offset"          # °C below comfort/curve target
 CONF_AWAY_OFFSET: Final = "away_offset"            # °C below comfort/curve target (per room away)
@@ -94,7 +98,11 @@ DEFAULT_VACATION_TEMP: Final = 14.0
 DEFAULT_MIN_TEMP: Final = 5.0
 DEFAULT_MAX_TEMP: Final = 30.0
 DEFAULT_WINDOW_OPEN_TEMP: Final = 5.0
-DEFAULT_WINDOW_REACTION_TIME: Final = 30
+DEFAULT_WINDOW_REACTION_TIME: Final = 30   # seconds
+DEFAULT_WINDOW_CLOSE_DELAY: Final = 0      # seconds (0 = immediate resume)
+DEFAULT_ABSOLUTE_MIN_TEMP: Final = 15.0    # °C – absolute per-room floor
+DEFAULT_ROOM_QM: Final = 0.0               # 0 = not configured
+DEFAULT_ROOM_PREHEAT_MINUTES: Final = -1   # -1 = use global/auto
 DEFAULT_ECO_OFFSET: Final = 3.0       # eco is 3°C below comfort by default
 DEFAULT_SLEEP_OFFSET: Final = 4.0     # sleep is 4°C below comfort by default
 DEFAULT_AWAY_OFFSET: Final = 6.0      # away is 6°C below comfort by default

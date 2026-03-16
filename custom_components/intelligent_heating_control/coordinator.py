@@ -201,6 +201,16 @@ from .const import (
     CONF_SMART_METER_ENTITY,
     CONF_PRICE_FORECAST_ATTRIBUTE,
     DEFAULT_PRICE_FORECAST_ATTRIBUTE,
+    # v2.x – per-room advanced settings
+    CONF_ABSOLUTE_MIN_TEMP,
+    CONF_ROOM_QM,
+    CONF_ROOM_PREHEAT_MINUTES,
+    CONF_WINDOW_CLOSE_DELAY,
+    DEFAULT_ABSOLUTE_MIN_TEMP,
+    DEFAULT_ROOM_QM,
+    DEFAULT_ROOM_PREHEAT_MINUTES,
+    DEFAULT_WINDOW_CLOSE_DELAY,
+    DEFAULT_WINDOW_REACTION_TIME,
 )
 from .heating_curve import HeatingCurve
 from .schedule_manager import ScheduleManager
@@ -290,6 +300,10 @@ class IHCCoordinator(DataUpdateCoordinator):
 
         # Manual TRV override detection: track last IHC-set temperature per room
         self._last_ihc_set_temps: Dict[str, float] = {}  # room_id → last temp IHC intentionally set
+
+        # Window timing: track when window was first seen open/closed (timestamp)
+        self._window_open_since: Dict[str, Optional[float]] = {}   # room_id → epoch when opened
+        self._window_closed_since: Dict[str, Optional[float]] = {} # room_id → epoch when closed
 
         # Build sub-components from config
         self._rebuild_from_config()
@@ -1302,6 +1316,11 @@ class IHCCoordinator(DataUpdateCoordinator):
 
         # --- Option 2: runtime × radiator power ---
         radiator_kw = float(room.get(CONF_RADIATOR_KW, DEFAULT_RADIATOR_KW))
+        # If room_qm is set and radiator_kw is at default, estimate from area
+        # (rough rule: ~50 W/m² for well-insulated, ~80 W/m² for older buildings → use 65 W/m²)
+        room_qm_e = float(room.get(CONF_ROOM_QM, DEFAULT_ROOM_QM))
+        if room_qm_e > 0 and radiator_kw == DEFAULT_RADIATOR_KW:
+            radiator_kw = round(room_qm_e * 0.065, 2)  # 65 W/m² → kW
         room_runtime_min = self.get_room_runtime_today_minutes(room_id)
         return round(room_runtime_min / 60.0 * radiator_kw, 3)
 
@@ -1585,27 +1604,54 @@ class IHCCoordinator(DataUpdateCoordinator):
 
     def _is_window_open(self, room: dict, current_temp: Optional[float]) -> bool:
         """
-        Detect window open state.
-        1. Multiple window/door sensors (window_sensors list) if configured.
-        2. Single window sensor (window_sensor) as fallback.
-        3. Temperature drop detection (future implementation).
+        Detect window open state with per-room reaction time and close delay.
+
+        - window_reaction_time: seconds a sensor must be ON before IHC reacts (default 30 s)
+        - window_close_delay:   seconds after sensor goes OFF before IHC resumes heating (default 0 s)
         """
-        # Check list of window sensors first (new multi-sensor support)
+        import time as _time
+        room_id = room.get(CONF_ROOM_ID, "")
+        reaction_time = float(room.get(CONF_WINDOW_REACTION_TIME, DEFAULT_WINDOW_REACTION_TIME))
+        close_delay   = float(room.get(CONF_WINDOW_CLOSE_DELAY, DEFAULT_WINDOW_CLOSE_DELAY))
+        now           = _time.monotonic()
+
+        # Check raw sensor state
+        sensor_open = False
         window_sensors: list = room.get(CONF_WINDOW_SENSORS, [])
         for sensor in window_sensors:
             if sensor:
                 state = self.hass.states.get(sensor)
                 if state and state.state == STATE_ON:
+                    sensor_open = True
+                    break
+        if not sensor_open:
+            window_sensor = room.get(CONF_WINDOW_SENSOR)
+            if window_sensor:
+                state = self.hass.states.get(window_sensor)
+                if state and state.state == STATE_ON:
+                    sensor_open = True
+
+        if sensor_open:
+            # Record first time seen open; reset close timestamp
+            if self._window_open_since.get(room_id) is None:
+                self._window_open_since[room_id] = now
+            self._window_closed_since[room_id] = None
+            # React only after reaction_time has elapsed
+            return (now - self._window_open_since[room_id]) >= reaction_time
+        else:
+            # Window closed: reset open timestamp
+            if self._window_open_since.get(room_id) is not None:
+                self._window_open_since[room_id] = None
+                # Start close-delay countdown only if we were previously "reacting"
+                if close_delay > 0:
+                    self._window_closed_since[room_id] = now
+            # During close delay: still report as open
+            closed_at = self._window_closed_since.get(room_id)
+            if closed_at is not None:
+                if (now - closed_at) < close_delay:
                     return True
-
-        # Legacy single window sensor
-        window_sensor = room.get(CONF_WINDOW_SENSOR)
-        if window_sensor:
-            state = self.hass.states.get(window_sensor)
-            if state and state.state == STATE_ON:
-                return True
-
-        return False
+                self._window_closed_since[room_id] = None
+            return False
 
     def _get_room_preset_temps(self, room: dict, outdoor_temp: Optional[float]) -> tuple[float, float, float, float]:
         """
@@ -1621,8 +1667,11 @@ class IHCCoordinator(DataUpdateCoordinator):
 
         Returns (comfort_base, eco_base, sleep_base, away_base) – all WITHOUT room_offset.
         """
-        min_temp = float(room.get(CONF_MIN_TEMP, DEFAULT_MIN_TEMP))
-        max_temp = float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP))
+        min_temp     = float(room.get(CONF_MIN_TEMP, DEFAULT_MIN_TEMP))
+        max_temp     = float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP))
+        abs_min_temp = float(room.get(CONF_ABSOLUTE_MIN_TEMP, DEFAULT_ABSOLUTE_MIN_TEMP))
+        # Effective floor is the higher of min_temp and absolute_min_temp
+        effective_floor = max(min_temp, abs_min_temp)
 
         if outdoor_temp is not None:
             comfort_base = self._heating_curve.get_target_temp(outdoor_temp)
@@ -1630,20 +1679,19 @@ class IHCCoordinator(DataUpdateCoordinator):
             # No outdoor sensor: fall back to the room's stored comfort_temp
             comfort_base = float(room.get(CONF_COMFORT_TEMP, DEFAULT_COMFORT_TEMP))
 
-        comfort_base = min(max_temp, max(min_temp, comfort_base))
+        comfort_base = min(max_temp, max(effective_floor, comfort_base))
 
         eco_offset  = float(room.get(CONF_ECO_OFFSET, DEFAULT_ECO_OFFSET))
         eco_max     = float(room.get(CONF_ECO_MAX_TEMP, DEFAULT_ECO_MAX_TEMP))
-        eco_base    = min(eco_max, min(max_temp, max(min_temp, comfort_base - eco_offset)))
+        eco_base    = min(eco_max, min(max_temp, max(effective_floor, comfort_base - eco_offset)))
 
         sleep_offset = float(room.get(CONF_SLEEP_OFFSET, DEFAULT_SLEEP_OFFSET))
         sleep_max    = float(room.get(CONF_SLEEP_MAX_TEMP, DEFAULT_SLEEP_MAX_TEMP))
-        sleep_base   = min(sleep_max, min(max_temp, max(min_temp, comfort_base - sleep_offset)))
+        sleep_base   = min(sleep_max, min(max_temp, max(effective_floor, comfort_base - sleep_offset)))
 
         away_offset  = float(room.get(CONF_AWAY_OFFSET, DEFAULT_AWAY_OFFSET))
         away_max     = float(room.get(CONF_AWAY_MAX_TEMP, DEFAULT_AWAY_MAX_TEMP))
-        # Fallback: use legacy fixed away_temp_room if no offset configured yet
-        away_base    = min(away_max, min(max_temp, max(min_temp, comfort_base - away_offset)))
+        away_base    = min(away_max, min(max_temp, max(effective_floor, comfort_base - away_offset)))
 
         return comfort_base, eco_base, sleep_base, away_base
 
@@ -1750,11 +1798,24 @@ class IHCCoordinator(DataUpdateCoordinator):
         if night_active:
             night_setback = float(cfg.get(CONF_NIGHT_SETBACK_OFFSET, DEFAULT_NIGHT_SETBACK_OFFSET))
 
-        # Pre-heat window: use adaptive warmup history when enabled, else static config
-        static_preheat = int(cfg.get(CONF_PREHEAT_MINUTES, DEFAULT_PREHEAT_MINUTES))
-        if cfg.get(CONF_ADAPTIVE_PREHEAT_ENABLED, DEFAULT_ADAPTIVE_PREHEAT_ENABLED):
+        # Pre-heat window: per-room override > adaptive warmup history > qm-based > global static
+        global_preheat  = int(cfg.get(CONF_PREHEAT_MINUTES, DEFAULT_PREHEAT_MINUTES))
+        room_preheat_cfg = int(room.get(CONF_ROOM_PREHEAT_MINUTES, DEFAULT_ROOM_PREHEAT_MINUTES))
+        room_qm          = float(room.get(CONF_ROOM_QM, DEFAULT_ROOM_QM))
+
+        if room_preheat_cfg >= 0:
+            # Explicit per-room override (0 = disabled for this room)
+            static_preheat = room_preheat_cfg
+        elif room_qm > 0 and global_preheat > 0:
+            # Scale global preheat by room size relative to a 15 m² reference room
+            import math as _math
+            static_preheat = max(1, round(global_preheat * _math.sqrt(room_qm / 15.0)))
+        else:
+            static_preheat = global_preheat
+
+        if static_preheat > 0 and cfg.get(CONF_ADAPTIVE_PREHEAT_ENABLED, DEFAULT_ADAPTIVE_PREHEAT_ENABLED):
             avg_warmup = self.get_avg_warmup_minutes(room_id)
-            # Use historical warmup + 10% safety buffer (floor = static config)
+            # Use historical warmup + 10% safety buffer (floor = static_preheat)
             preheat_minutes = max(static_preheat, round(avg_warmup * 1.1)) if avg_warmup else static_preheat
         else:
             preheat_minutes = static_preheat
@@ -2105,7 +2166,14 @@ class IHCCoordinator(DataUpdateCoordinator):
             window_open = self._is_window_open(room, current_temp)
             room_mode = self.get_room_mode(room_id)
             deadband = float(room.get(CONF_DEADBAND, DEFAULT_DEADBAND))
-            weight = float(room.get(CONF_WEIGHT, DEFAULT_WEIGHT))
+            configured_weight = float(room.get(CONF_WEIGHT, DEFAULT_WEIGHT))
+            room_qm_val = float(room.get(CONF_ROOM_QM, DEFAULT_ROOM_QM))
+            # If weight is at its default (1.0) and room_qm is set, derive weight from area
+            if configured_weight == DEFAULT_WEIGHT and room_qm_val > 0:
+                import math as _math
+                weight = round(_math.sqrt(room_qm_val / 15.0), 2)  # 15 m² = weight 1.0
+            else:
+                weight = configured_weight
 
             # Update temperature history (Roadmap 1.1)
             self._update_temp_history(room_id, current_temp)
@@ -2186,6 +2254,7 @@ class IHCCoordinator(DataUpdateCoordinator):
                 "eco_temp_eff": eco_eff,
                 "sleep_temp_eff": sleep_eff,
                 "away_temp_eff": away_eff,
+                "effective_weight": weight,
                 # Ensure night_setback is always present (meta may omit it for mode overrides)
                 "night_setback": 0.0,
                 # HA schedule time blocks (read from schedule.* entity config entries)
