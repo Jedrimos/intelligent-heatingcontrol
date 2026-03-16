@@ -128,7 +128,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         SERVICE_ADD_ROOM, SERVICE_REMOVE_ROOM, SERVICE_UPDATE_ROOM,
         SERVICE_SET_ROOM_MODE, SERVICE_SET_SYSTEM_MODE, SERVICE_BOOST_ROOM,
         "reload", "export_config", "update_global_settings",
-        "activate_guest_mode", "deactivate_guest_mode",
+        "activate_guest_mode", "deactivate_guest_mode", "reset_stats",
     ]:
         hass.services.async_remove(DOMAIN, service)
 
@@ -371,6 +371,11 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
     async def handle_deactivate_guest_mode(call: ServiceCall) -> None:
         coordinator.deactivate_guest_mode()
 
+    async def handle_reset_stats(call: ServiceCall) -> None:
+        """Reset energy and runtime statistics to zero."""
+        coordinator.reset_runtime_stats()
+        await coordinator.async_request_refresh()
+
     hass.services.async_register(DOMAIN, SERVICE_ADD_ROOM, handle_add_room)
     hass.services.async_register(DOMAIN, SERVICE_REMOVE_ROOM, handle_remove_room)
     hass.services.async_register(DOMAIN, SERVICE_UPDATE_ROOM, handle_update_room)
@@ -382,3 +387,4 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
     hass.services.async_register(DOMAIN, "update_global_settings", handle_update_global_settings)
     hass.services.async_register(DOMAIN, "activate_guest_mode", handle_activate_guest_mode)
     hass.services.async_register(DOMAIN, "deactivate_guest_mode", handle_deactivate_guest_mode)
+    hass.services.async_register(DOMAIN, "reset_stats", handle_reset_stats)
