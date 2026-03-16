@@ -873,7 +873,7 @@ class IHCPanel extends HTMLElement {
           </div>
           ${room.next_period && !room.schedule_active ? `<div style="font-size:10px;color:var(--secondary-text-color);margin-top:4px">📅 Nächster Zeitplan: ${room.next_period.start}–${room.next_period.end} · ${room.next_period.temperature}°C</div>` : ""}
           <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
-            ${localStorage.getItem("ihc_show_energy") !== "false" && room.runtime_today_minutes > 0 ? `<span style="font-size:10px;color:var(--secondary-text-color)">⏱ ${room.runtime_today_minutes} min${room.energy_today_kwh > 0 ? ` · ~${room.energy_today_kwh} kWh` : ""}</span>` : "<span></span>"}
+            ${localStorage.getItem("ihc_show_energy") !== "false" && room.runtime_today_minutes > 0 ? `<span style="font-size:10px;color:var(--secondary-text-color)">⏱ ${room.runtime_today_minutes} min${room.energy_today_kwh > 0 ? ` · ~${this._kwh(room.energy_today_kwh)} kWh` : ""}</span>` : "<span></span>"}
             ${room.avg_warmup_minutes ? `<span style="font-size:10px;color:var(--secondary-text-color)" title="Ø Aufheizzeit">🌡️ Ø ${room.avg_warmup_minutes} min</span>` : ""}
             ${this._sparkline(room.temp_history)}
           </div>
@@ -927,7 +927,7 @@ class IHCPanel extends HTMLElement {
         <div class="hero-card">
           <div class="hero-label">Gesamtanforderung</div>
           <div class="hero-value ${demandCls}">${demandNum}</div>
-          ${localStorage.getItem("ihc_show_energy") !== "false" ? `<div class="hero-sub">⏱ ${g.heating_runtime_today} min · ${g.energy_today_kwh} kWh</div>` : ""}
+          ${localStorage.getItem("ihc_show_energy") !== "false" ? `<div class="hero-sub">⏱ ${g.heating_runtime_today} min · ${this._kwh(g.energy_today_kwh)} kWh</div>` : ""}
         </div>
         <div class="hero-card" style="justify-content:space-between">
           <div class="hero-label">Systemmodus</div>
@@ -964,7 +964,7 @@ class IHCPanel extends HTMLElement {
         </div>` : ""}
         ${localStorage.getItem("ihc_show_energy") !== "false" && g.heating_runtime_yesterday > 0 ? `<div class="status-item" title="Gestriger Verbrauch">
           <div class="status-label">Gestern</div>
-          <div class="status-value ${g.energy_today_kwh > g.energy_yesterday_kwh ? "on" : "ok"}" style="font-size:15px">${g.energy_yesterday_kwh} kWh</div>
+          <div class="status-value ${g.energy_today_kwh > g.energy_yesterday_kwh ? "on" : "ok"}" style="font-size:15px">${this._kwh(g.energy_yesterday_kwh)} kWh</div>
         </div>` : ""}
         ${g.weather_forecast ? (() => {
           const fc = g.weather_forecast;
@@ -1381,8 +1381,105 @@ class IHCPanel extends HTMLElement {
         </div>
       </details>
 
+      <!-- ── Kalibrierungs-Assistent ──────────────────────── -->
+      <details class="ihc-card">
+        <summary>
+          <span class="ihc-card-title">📋 Kalibrierungs-Assistent
+            <span class="badge-neutral" style="margin-left:6px;font-size:10px;padding:2px 7px;border-radius:10px;background:#e3f2fd;color:#1565c0;font-weight:700">Für Mieter</span>
+          </span>
+        </summary>
+        <div class="ihc-card-body">
+          <p style="font-size:12px;color:var(--secondary-text-color);margin:0 0 12px">
+            Kein Zugang zu Kesselleistung oder Gasverbrauch? Trage deine Heizkostenabrechnung ein —
+            IHC berechnet daraus automatisch <strong>virtuelle Kesselleistung</strong> und <strong>Energiepreis</strong>.
+          </p>
+          <div class="settings-grid">
+            <div class="settings-item">
+              <label>Heizungsart</label>
+              <select class="form-select" id="cal-heating-type">
+                <option value="gas">Gas-Zentralheizung</option>
+                <option value="district">Fernwärme</option>
+                <option value="oil">Ölheizung</option>
+                <option value="hp">Wärmepumpe</option>
+              </select>
+            </div>
+            <div class="settings-item">
+              <label>Gebäudetyp</label>
+              <select class="form-select" id="cal-building-type">
+                <option value="old">Altbau (vor 1980)</option>
+                <option value="mid" selected>Bestand (1980–2010)</option>
+                <option value="new">Neubau / saniert (nach 2010)</option>
+              </select>
+            </div>
+            <div class="settings-item">
+              <label>Jahresheizkosten (€)</label>
+              <input type="number" class="form-input" id="cal-annual-cost" min="100" max="20000" step="10" placeholder="z.B. 1667">
+              <span class="form-hint">Gesamtbetrag laut Heizkostenabrechnung</span>
+            </div>
+            <div class="settings-item">
+              <label>Heizanteil (%)</label>
+              <input type="number" class="form-input" id="cal-heating-share" min="40" max="90" step="5" value="65">
+              <span class="form-hint">Typisch 60–70 % (Rest = Warmwasser, Verwaltung)</span>
+            </div>
+            <div class="settings-item">
+              <label>Energiepreis (€/kWh) <span style="font-size:10px;color:var(--secondary-text-color)">(optional, überschreibt Schätzwert)</span></label>
+              <input type="number" class="form-input" id="cal-manual-price" min="0.01" max="2" step="0.01" placeholder="leer = automatisch aus Heizungsart">
+              <span class="form-hint">Falls du den Preis aus deiner Nebenkostenabrechnung kennst</span>
+            </div>
+            <div class="settings-item">
+              <label>Heizbetriebsstunden/Jahr <span style="font-size:10px;color:var(--secondary-text-color)">(optional)</span></label>
+              <input type="number" class="form-input" id="cal-manual-hours" min="500" max="5000" step="100" placeholder="leer = automatisch aus Gebäudetyp">
+              <span class="form-hint">Altbau ≈ 2400 h · Bestand ≈ 2000 h · Neubau ≈ 1600 h</span>
+            </div>
+          </div>
+          <div id="cal-result" style="display:none;margin:12px 0;padding:14px;border-radius:10px;background:var(--secondary-background-color);border:1.5px solid var(--primary-color)">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--secondary-text-color);margin-bottom:10px">Berechneter Schätzwert</div>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">
+              <div>
+                <div style="font-size:11px;color:var(--secondary-text-color)">Virtuelle Kesselleistung</div>
+                <div id="cal-result-kw" style="font-size:26px;font-weight:800;color:var(--primary-color)">–</div>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--secondary-text-color)">Energiepreis</div>
+                <div id="cal-result-price" style="font-size:26px;font-weight:800;color:var(--primary-color)">–</div>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--secondary-text-color)">Geschätzte Jahresenergie</div>
+                <div id="cal-result-kwh" style="font-size:26px;font-weight:800;color:#757575">–</div>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--secondary-text-color);margin-bottom:10px" id="cal-result-hint"></div>
+            <button class="btn btn-primary" id="cal-apply-btn">📥 Werte in Einstellungen übernehmen</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-secondary" id="cal-calc-btn">🧮 Berechnen</button>
+          </div>
+          <hr class="divider" style="margin-top:16px">
+          <div style="font-size:12px;font-weight:700;margin:8px 0 6px">📊 Kalibrierung nach echter Abrechnung</div>
+          <p style="font-size:11px;color:var(--secondary-text-color);margin:0 0 10px">
+            IHC hat im letzten Jahr <strong id="cal-ihc-kwh-display">–</strong> kWh geschätzt.
+            Wenn du deinen echten Verbrauch kennst, kannst du den Korrekturfaktor anpassen:
+          </p>
+          <div class="settings-grid">
+            <div class="settings-item">
+              <label>Echter Jahresverbrauch (kWh) <span style="font-size:10px;color:var(--secondary-text-color)">(optional)</span></label>
+              <input type="number" class="form-input" id="cal-actual-kwh" min="500" max="50000" step="100" placeholder="leer lassen wenn unbekannt">
+              <span class="form-hint">Aus Gasrechnung oder Energieausweis</span>
+            </div>
+            <div class="settings-item">
+              <label>Korrekturfaktor</label>
+              <div id="cal-factor-display" style="font-size:20px;font-weight:700;color:var(--primary-color);padding:8px 0">–</div>
+              <span class="form-hint">IHC passt Verbrauchsanzeige damit an</span>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-secondary" id="cal-factor-apply-btn">📐 Korrekturfaktor speichern</button>
+          </div>
+        </div>
+      </details>
+
       <!-- ── Energie & Solar ────────────────────────────── -->
-      <details class="ihc-card" ${hasEnergy ? "open" : ""}>
+      <details class="ihc-card" id="energie-details" ${hasEnergy ? "open" : ""}>
         <summary>
           <span class="ihc-card-title">⚡ Energie, Solar &amp; Vorlauftemperatur
             ${g.solar_boost > 0 ? activeBadge("☀️ Solar-Boost") : ""}
@@ -1478,7 +1575,7 @@ class IHCPanel extends HTMLElement {
             </div>
             <div class="settings-item">
               <label>Verbrauch</label>
-              <div style="font-size:22px;font-weight:700;color:var(--primary-color)">${g.energy_today_kwh} kWh</div>
+              <div style="font-size:22px;font-weight:700;color:var(--primary-color)">${this._kwh(g.energy_today_kwh)} kWh</div>
             </div>
             ${g.solar_power != null ? `<div class="settings-item"><label>Solar</label><div style="font-size:20px;font-weight:700;color:#f9a825">${g.solar_power} W</div></div>` : ""}
             ${g.energy_price != null ? `<div class="settings-item"><label>Strompreis</label><div style="font-size:20px;font-weight:700;color:${g.energy_price_eco_active ? "#c62828" : "#43a047"}">${g.energy_price.toFixed(3)} €/kWh</div></div>` : ""}
@@ -1710,6 +1807,97 @@ class IHCPanel extends HTMLElement {
       this._callService("update_global_settings", { presence_entities: checked });
       this._toast("✓ Anwesenheitserkennung gespeichert");
     });
+
+    // ── Kalibrierungs-Assistent ─────────────────────────────────────
+    {
+      // Energy price defaults per heating type (€/kWh)
+      const ENERGY_PRICES = { gas: 0.09, district: 0.11, oil: 0.10, hp: 0.05 };
+      // Typical annual heating hours per building type
+      const HEATING_HOURS = { old: 2400, mid: 2000, new: 1600 };
+      const BUILDING_LABELS = { old: "Altbau", mid: "Bestand", new: "Neubau/saniert" };
+
+      const _calcBtn       = content.querySelector("#cal-calc-btn");
+      const _resultBox     = content.querySelector("#cal-result");
+      const _resultKw      = content.querySelector("#cal-result-kw");
+      const _resultPrice   = content.querySelector("#cal-result-price");
+      const _resultKwh     = content.querySelector("#cal-result-kwh");
+      const _resultHint    = content.querySelector("#cal-result-hint");
+      const _applyBtn      = content.querySelector("#cal-apply-btn");
+      const _factorApply   = content.querySelector("#cal-factor-apply-btn");
+      const _ihcKwhDisplay = content.querySelector("#cal-ihc-kwh-display");
+
+      // Show IHC's own annual estimate (from current data)
+      const g = this._getGlobal();
+      if (g && g.energy_today_kwh != null) {
+        // Rough extrapolation: today × 365 / heating_season_fraction (assume 60% of year is heating)
+        const estAnnual = Math.round(g.energy_today_kwh * 200);  // rough 200 heating days
+        _ihcKwhDisplay.textContent = `≈ ${estAnnual.toLocaleString("de-DE")}`;
+      }
+
+      let _lastCalcKw = null;
+      let _lastCalcPrice = null;
+
+      _calcBtn.addEventListener("click", () => {
+        const annualCost  = parseFloat(content.querySelector("#cal-annual-cost").value);
+        const shareRaw    = parseFloat(content.querySelector("#cal-heating-share").value);
+        const heatType    = content.querySelector("#cal-heating-type").value;
+        const buildType   = content.querySelector("#cal-building-type").value;
+        const manualPrice = parseFloat(content.querySelector("#cal-manual-price").value);
+        const manualHours = parseFloat(content.querySelector("#cal-manual-hours").value);
+
+        if (isNaN(annualCost) || annualCost <= 0) {
+          this._toast("⚠️ Bitte Jahresheizkosten eingeben"); return;
+        }
+        const share = (isNaN(shareRaw) ? 65 : Math.min(90, Math.max(40, shareRaw))) / 100;
+        const energyPrice = (!isNaN(manualPrice) && manualPrice > 0) ? manualPrice : (ENERGY_PRICES[heatType] ?? 0.10);
+        const hours       = (!isNaN(manualHours) && manualHours > 0) ? manualHours : (HEATING_HOURS[buildType] ?? 2000);
+
+        const heatingCost = annualCost * share;
+        const annualKwh   = heatingCost / energyPrice;
+        const virtualKw   = annualKwh / hours;
+
+        _lastCalcKw    = Math.round(virtualKw * 10) / 10;
+        _lastCalcPrice = energyPrice;
+
+        _resultKw.textContent    = `${_lastCalcKw} kW`;
+        _resultPrice.textContent = `${energyPrice.toFixed(2)} €/kWh`;
+        _resultKwh.textContent   = `${Math.round(annualKwh).toLocaleString("de-DE")} kWh`;
+        _resultHint.textContent  = `Basis: ${Math.round(heatingCost)}€ Heizanteil ÷ ${energyPrice.toFixed(2)} €/kWh ÷ ${hours} Stunden (${BUILDING_LABELS[buildType]}) · Werte können nach echter Abrechnung korrigiert werden.`;
+        _resultBox.style.display = "block";
+      });
+
+      _applyBtn.addEventListener("click", () => {
+        if (_lastCalcKw == null) return;
+        const boilerInput = content.querySelector("#boiler-kw");
+        if (boilerInput) { boilerInput.value = _lastCalcKw; boilerInput.style.background = "color-mix(in srgb, var(--primary-color) 10%, transparent)"; setTimeout(() => { boilerInput.style.background = ""; }, 2000); }
+        // Open the Energie section so user can see the applied value
+        const energieCard = content.querySelector("#energie-details");
+        if (energieCard) energieCard.open = true;
+        this._toast(`✓ Kesselleistung auf ${_lastCalcKw} kW gesetzt – bitte Energie/Solar speichern`);
+      });
+
+      // Correction factor calculation
+      content.querySelector("#cal-actual-kwh").addEventListener("input", () => {
+        const actual  = parseFloat(content.querySelector("#cal-actual-kwh").value);
+        const g2 = this._getGlobal();
+        if (isNaN(actual) || actual <= 0 || !g2) { content.querySelector("#cal-factor-display").textContent = "–"; return; }
+        // IHC annual estimate: use boiler_kw × estimated runtime hours
+        const boilerKw = parseFloat(g2.boiler_kw ?? content.querySelector("#boiler-kw")?.value ?? 5);
+        const runtimeH = (g2.heating_runtime_today ?? 0) / 60 * 200; // rough 200 heating days
+        const ihcEst = boilerKw * runtimeH;
+        if (ihcEst <= 0) { content.querySelector("#cal-factor-display").textContent = "–"; return; }
+        const factor = Math.round((actual / ihcEst) * 100) / 100;
+        content.querySelector("#cal-factor-display").textContent = `${factor}×`;
+        content.querySelector("#cal-factor-apply-btn").dataset.factor = factor;
+      });
+
+      _factorApply.addEventListener("click", () => {
+        const factor = parseFloat(_factorApply.dataset.factor);
+        if (isNaN(factor) || factor <= 0) { this._toast("⚠️ Zuerst echten Verbrauch eingeben"); return; }
+        localStorage.setItem("ihc_energy_factor", factor.toString());
+        this._toast(`✓ Korrekturfaktor ${factor}× gespeichert – Verbrauchsanzeige wird angepasst`);
+      });
+    }
 
     // Energy stats visibility toggle – stored in localStorage (frontend-only)
     content.querySelector("#show-energy-stats").addEventListener("change", e => {
@@ -3089,6 +3277,14 @@ class IHCPanel extends HTMLElement {
       console.error("IHC service error:", service, e);
       this._toast("❌ Fehler: " + (e.message || "Unbekannt"));
     }
+  }
+
+  // ── Energy correction factor ────────────────────────────────────────────────
+  // Applies the user-set calibration factor (stored in localStorage) to kWh values.
+  _kwh(raw) {
+    const factor = parseFloat(localStorage.getItem("ihc_energy_factor") || "1") || 1;
+    const corrected = raw * factor;
+    return Math.round(corrected * 10) / 10;
   }
 
   // ── Toast ──────────────────────────────────────────────────────────────────
