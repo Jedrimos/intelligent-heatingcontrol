@@ -69,9 +69,28 @@ from .const import (
     CONF_WINDOW_SENSOR,
     CONF_WINDOW_OPEN_TEMP,
     CONF_WINDOW_REACTION_TIME,
+    CONF_WINDOW_CLOSE_DELAY,
     CONF_MIN_TEMP,
     CONF_MAX_TEMP,
     CONF_SCHEDULES,
+    CONF_ABSOLUTE_MIN_TEMP,
+    CONF_ROOM_QM,
+    CONF_ROOM_PREHEAT_MINUTES,
+    # Global advanced settings missing from original flow
+    CONF_CONTROLLER_MODE,
+    CONF_WEATHER_ENTITY,
+    CONF_WEATHER_COLD_THRESHOLD,
+    CONF_WEATHER_COLD_BOOST,
+    CONF_SMART_METER_ENTITY,
+    CONF_FLOW_TEMP_SENSOR,
+    CONF_COOLING_TARGET_TEMP,
+    CONF_OUTDOOR_HUMIDITY_SENSOR,
+    CONF_VENTILATION_ADVICE_ENABLED,
+    CONF_ADAPTIVE_CURVE_ENABLED,
+    CONF_ADAPTIVE_PREHEAT_ENABLED,
+    CONF_ETA_PREHEAT_ENABLED,
+    CONF_VACATION_CALENDAR,
+    CONF_VACATION_CALENDAR_KEYWORD,
     DEFAULT_DEMAND_THRESHOLD,
     DEFAULT_DEMAND_HYSTERESIS,
     DEFAULT_MIN_ON_TIME,
@@ -88,7 +107,20 @@ from .const import (
     DEFAULT_HEATING_CURVE,
     DEFAULT_WINDOW_OPEN_TEMP,
     DEFAULT_WINDOW_REACTION_TIME,
+    DEFAULT_WINDOW_CLOSE_DELAY,
+    DEFAULT_ABSOLUTE_MIN_TEMP,
+    DEFAULT_ROOM_QM,
+    DEFAULT_ROOM_PREHEAT_MINUTES,
     DEFAULT_SUMMER_THRESHOLD,
+    DEFAULT_CONTROLLER_MODE,
+    DEFAULT_WEATHER_COLD_THRESHOLD,
+    DEFAULT_WEATHER_COLD_BOOST,
+    DEFAULT_COOLING_TARGET_TEMP,
+    DEFAULT_ADAPTIVE_CURVE_ENABLED,
+    DEFAULT_ADAPTIVE_PREHEAT_ENABLED,
+    DEFAULT_ETA_PREHEAT_ENABLED,
+    DEFAULT_VACATION_CALENDAR_KEYWORD,
+    DEFAULT_VENTILATION_ADVICE_ENABLED,
     DEFAULT_FROST_PROTECTION_TEMP,
     DEFAULT_NIGHT_SETBACK_OFFSET,
     DEFAULT_PREHEAT_MINUTES,
@@ -425,10 +457,80 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             ): selector.selector({
                 "number": {"min": 0.5, "max": 6, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
-            # --- Roadmap 1.4: Flow temperature control ---
+            # --- Flow temperature control ---
             vol.Optional(
                 CONF_FLOW_TEMP_ENTITY,
                 default=cfg.get(CONF_FLOW_TEMP_ENTITY, "")
+            ): selector.selector({"text": {}}),
+            vol.Optional(
+                CONF_FLOW_TEMP_SENSOR,
+                default=cfg.get(CONF_FLOW_TEMP_SENSOR, "")
+            ): selector.selector({"text": {}}),
+            vol.Optional(
+                CONF_COOLING_TARGET_TEMP,
+                default=float(cfg.get(CONF_COOLING_TARGET_TEMP, DEFAULT_COOLING_TARGET_TEMP))
+            ): selector.selector({
+                "number": {"min": 18, "max": 30, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            # --- Controller mode ---
+            vol.Optional(
+                CONF_CONTROLLER_MODE,
+                default=cfg.get(CONF_CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE)
+            ): selector.selector({
+                "select": {"options": ["switch", "trv"]}
+            }),
+            # --- Smart meter ---
+            vol.Optional(
+                CONF_SMART_METER_ENTITY,
+                default=cfg.get(CONF_SMART_METER_ENTITY, "")
+            ): selector.selector({"text": {}}),
+            # --- Weather integration ---
+            vol.Optional(
+                CONF_WEATHER_ENTITY,
+                default=cfg.get(CONF_WEATHER_ENTITY, "")
+            ): selector.selector({"text": {}}),
+            vol.Optional(
+                CONF_WEATHER_COLD_THRESHOLD,
+                default=float(cfg.get(CONF_WEATHER_COLD_THRESHOLD, DEFAULT_WEATHER_COLD_THRESHOLD))
+            ): selector.selector({
+                "number": {"min": -20, "max": 10, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(
+                CONF_WEATHER_COLD_BOOST,
+                default=float(cfg.get(CONF_WEATHER_COLD_BOOST, DEFAULT_WEATHER_COLD_BOOST))
+            ): selector.selector({
+                "number": {"min": 0, "max": 5, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            # --- Humidity / ventilation ---
+            vol.Optional(
+                CONF_OUTDOOR_HUMIDITY_SENSOR,
+                default=cfg.get(CONF_OUTDOOR_HUMIDITY_SENSOR, "")
+            ): selector.selector({"text": {}}),
+            vol.Optional(
+                CONF_VENTILATION_ADVICE_ENABLED,
+                default=bool(cfg.get(CONF_VENTILATION_ADVICE_ENABLED, DEFAULT_VENTILATION_ADVICE_ENABLED))
+            ): selector.selector({"boolean": {}}),
+            # --- Adaptive curve / preheat ---
+            vol.Optional(
+                CONF_ADAPTIVE_CURVE_ENABLED,
+                default=bool(cfg.get(CONF_ADAPTIVE_CURVE_ENABLED, DEFAULT_ADAPTIVE_CURVE_ENABLED))
+            ): selector.selector({"boolean": {}}),
+            vol.Optional(
+                CONF_ADAPTIVE_PREHEAT_ENABLED,
+                default=bool(cfg.get(CONF_ADAPTIVE_PREHEAT_ENABLED, DEFAULT_ADAPTIVE_PREHEAT_ENABLED))
+            ): selector.selector({"boolean": {}}),
+            vol.Optional(
+                CONF_ETA_PREHEAT_ENABLED,
+                default=bool(cfg.get(CONF_ETA_PREHEAT_ENABLED, DEFAULT_ETA_PREHEAT_ENABLED))
+            ): selector.selector({"boolean": {}}),
+            # --- Vacation calendar ---
+            vol.Optional(
+                CONF_VACATION_CALENDAR,
+                default=cfg.get(CONF_VACATION_CALENDAR, "")
+            ): selector.selector({"text": {}}),
+            vol.Optional(
+                CONF_VACATION_CALENDAR_KEYWORD,
+                default=cfg.get(CONF_VACATION_CALENDAR_KEYWORD, DEFAULT_VACATION_CALENDAR_KEYWORD)
             ): selector.selector({"text": {}}),
         })
         return self.async_show_form(step_id="global_settings", data_schema=vol.Schema(schema_dict), errors=errors)
@@ -525,6 +627,11 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
                 CONF_WINDOW_SENSORS: [single_window] if single_window else [],
                 CONF_MIN_TEMP: float(user_input.get(CONF_MIN_TEMP, DEFAULT_MIN_TEMP)),
                 CONF_MAX_TEMP: float(user_input.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP)),
+                CONF_ABSOLUTE_MIN_TEMP: float(user_input.get(CONF_ABSOLUTE_MIN_TEMP, DEFAULT_ABSOLUTE_MIN_TEMP)),
+                CONF_ROOM_QM: float(user_input.get(CONF_ROOM_QM, DEFAULT_ROOM_QM)),
+                CONF_ROOM_PREHEAT_MINUTES: int(user_input.get(CONF_ROOM_PREHEAT_MINUTES, DEFAULT_ROOM_PREHEAT_MINUTES)),
+                CONF_WINDOW_REACTION_TIME: float(user_input.get(CONF_WINDOW_REACTION_TIME, DEFAULT_WINDOW_REACTION_TIME)),
+                CONF_WINDOW_CLOSE_DELAY: float(user_input.get(CONF_WINDOW_CLOSE_DELAY, DEFAULT_WINDOW_CLOSE_DELAY)),
                 CONF_SCHEDULES: [],
             }
             rooms = list(self._options.get(CONF_ROOMS, []))
@@ -563,6 +670,21 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             }),
             vol.Optional(CONF_MAX_TEMP, default=DEFAULT_MAX_TEMP): selector.selector({
                 "number": {"min": 20, "max": 35, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_ABSOLUTE_MIN_TEMP, default=DEFAULT_ABSOLUTE_MIN_TEMP): selector.selector({
+                "number": {"min": 5, "max": 25, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_ROOM_QM, default=DEFAULT_ROOM_QM): selector.selector({
+                "number": {"min": 0, "max": 200, "step": 1, "unit_of_measurement": "m²", "mode": "box"}
+            }),
+            vol.Optional(CONF_ROOM_PREHEAT_MINUTES, default=DEFAULT_ROOM_PREHEAT_MINUTES): selector.selector({
+                "number": {"min": -1, "max": 120, "step": 1, "unit_of_measurement": "min", "mode": "box"}
+            }),
+            vol.Optional(CONF_WINDOW_REACTION_TIME, default=DEFAULT_WINDOW_REACTION_TIME): selector.selector({
+                "number": {"min": 0, "max": 300, "step": 5, "unit_of_measurement": "s", "mode": "box"}
+            }),
+            vol.Optional(CONF_WINDOW_CLOSE_DELAY, default=DEFAULT_WINDOW_CLOSE_DELAY): selector.selector({
+                "number": {"min": 0, "max": 600, "step": 5, "unit_of_measurement": "s", "mode": "box"}
             }),
         })
         return self.async_show_form(
@@ -639,6 +761,21 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             }),
             vol.Optional(CONF_MAX_TEMP, default=float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP))): selector.selector({
                 "number": {"min": 20, "max": 35, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_ABSOLUTE_MIN_TEMP, default=float(room.get(CONF_ABSOLUTE_MIN_TEMP, DEFAULT_ABSOLUTE_MIN_TEMP))): selector.selector({
+                "number": {"min": 5, "max": 25, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_ROOM_QM, default=float(room.get(CONF_ROOM_QM, DEFAULT_ROOM_QM))): selector.selector({
+                "number": {"min": 0, "max": 200, "step": 1, "unit_of_measurement": "m²", "mode": "box"}
+            }),
+            vol.Optional(CONF_ROOM_PREHEAT_MINUTES, default=int(room.get(CONF_ROOM_PREHEAT_MINUTES, DEFAULT_ROOM_PREHEAT_MINUTES))): selector.selector({
+                "number": {"min": -1, "max": 120, "step": 1, "unit_of_measurement": "min", "mode": "box"}
+            }),
+            vol.Optional(CONF_WINDOW_REACTION_TIME, default=float(room.get(CONF_WINDOW_REACTION_TIME, DEFAULT_WINDOW_REACTION_TIME))): selector.selector({
+                "number": {"min": 0, "max": 300, "step": 5, "unit_of_measurement": "s", "mode": "box"}
+            }),
+            vol.Optional(CONF_WINDOW_CLOSE_DELAY, default=float(room.get(CONF_WINDOW_CLOSE_DELAY, DEFAULT_WINDOW_CLOSE_DELAY))): selector.selector({
+                "number": {"min": 0, "max": 600, "step": 5, "unit_of_measurement": "s", "mode": "box"}
             }),
         })
         return self.async_show_form(step_id="edit_room_details", data_schema=schema)
