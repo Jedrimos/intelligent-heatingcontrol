@@ -1268,17 +1268,16 @@ class IHCPanel extends HTMLElement {
       <div class="rooms-grid">${roomCards}</div>
     `;
 
-    // Hero system-mode button
-    const heroModeBtn = content.querySelector("#hero-set-mode");
-    if (heroModeBtn) {
-      heroModeBtn.addEventListener("click", () => {
-        const mode = content.querySelector("#hero-system-mode").value;
+    // Sysmode-pill buttons (system mode quick-select in hero section)
+    content.querySelectorAll(".sysmode-pill[data-sysmode]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const mode = btn.dataset.sysmode;
         this._callService("set_system_mode", { mode }).then(() => {
           setTimeout(() => { if (this._activeTab === "overview" && !this._modalOpen) this._renderTabContent(); }, 1200);
         });
         this._toast(`✓ Systemmodus: ${SYSTEM_MODE_LABELS[mode] || mode}`);
       });
-    }
+    });
 
     // Mode select changes
     content.querySelectorAll(".mode-select[data-room-id]").forEach(sel => {
