@@ -1673,16 +1673,19 @@ class IHCPanel extends HTMLElement {
       const cells = HOURS.map((_, h) => {
         const val         = ihcGrid[di][h];
         const valInactive = ihcGridInactive[di][h];
+        const haActive    = haGrids.find(hg => hg.grid[di][h] != null);
         let bg, label = "", opacity = "1";
         if (val != null) {
           bg = tempToColor(val); label = val;
         } else if (valInactive != null) {
-          // Inactive conditional group: grey/muted
           bg = "rgba(128,128,128,0.2)"; label = ""; opacity = "0.6";
+        } else if (haActive) {
+          const s = HA_MODE_STYLE[haActive.mode] || HA_MODE_STYLE.comfort;
+          bg = s.color; label = s.label[0];
         } else {
           bg = "var(--secondary-background-color, #f5f5f5)";
         }
-        const title = val != null ? `${val} °C` : valInactive != null ? `${valInactive} °C (Bedingung nicht erfüllt)` : "—";
+        const title = val != null ? `${val} °C` : valInactive != null ? `${valInactive} °C (Bedingung nicht erfüllt)` : haActive ? `HA: ${haActive.entityId} → ${haActive.mode}` : "—";
         return `<div title="${title}" style="flex:1;height:22px;background:${bg};opacity:${opacity};border-radius:2px;margin:1px;display:flex;align-items:center;justify-content:center;font-size:8px;color:rgba(0,0,0,0.55);font-weight:600">${label}</div>`;
       }).join("");
       return `<div style="display:flex;align-items:center;gap:0;margin-bottom:1px">
@@ -1691,10 +1694,31 @@ class IHCPanel extends HTMLElement {
       </div>`;
     }).join("");
 
+    // HA schedule blocks (legacy – kept for backward compatibility)
+    const HA_MODE_STYLE = {
+      comfort: { label: "Komfort", color: "rgba(255,152,0,0.35)" },
+      eco:     { label: "Eco",     color: "rgba(76,175,80,0.35)"  },
+      sleep:   { label: "Schlaf",  color: "rgba(33,150,243,0.35)" },
+      away:    { label: "Abwesend",color: "rgba(158,158,158,0.35)"},
+    };
+    const haBlocks    = room.ha_schedule_blocks || {};
+    const haSchedsCfg = room.ha_schedules || [];
+    const yamlEntityIds = new Set(
+      Object.entries(haBlocks)
+        .filter(([, blocks]) => Array.isArray(blocks) && blocks.some(b => b._yaml_defined))
+        .map(([eid]) => eid)
+    );
+    const haGrids = Object.entries(haBlocks)
+      .filter(([eid]) => !yamlEntityIds.has(eid))
+      .map(([eid, blocks]) => {
+        const cfg = haSchedsCfg.find(s => s.entity === eid) || {};
+        return { entityId: eid, mode: cfg.mode || "comfort", grid: buildGrid(blocks, true) };
+      });
+
     // IHC schedule group legend (shows name + condition status)
     const schedLegend = allScheds.length > 0 ? `
       <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--divider-color)">
-        <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:var(--secondary-text-color)">Zeitplan-Gruppen</div>
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:var(--secondary-text-color)">IHC Zeitplan-Gruppen</div>
         ${allScheds.map((s, i) => {
           const active = isGroupActive(s);
           const name = s.name || `Gruppe ${i + 1}`;
@@ -1708,7 +1732,43 @@ class IHCPanel extends HTMLElement {
         }).join("")}
       </div>` : "";
 
-    const noHint = allScheds.length === 0
+    const haLegend = haGrids.length > 0 ? `
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--divider-color)">
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:var(--secondary-text-color)">🏠 Verknüpfte HA-Zeitpläne</div>
+        ${haGrids.map(hg => {
+          const s = HA_MODE_STYLE[hg.mode] || HA_MODE_STYLE.comfort;
+          const cnt = haBlocks[hg.entityId]?.filter(b => !b._yaml_defined).length ?? 0;
+          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+            <div style="width:14px;height:14px;border-radius:3px;background:${s.color};border:1px solid rgba(0,0,0,0.15)"></div>
+            <span style="font-size:11px;font-weight:600">${hg.entityId}</span>
+            <span style="font-size:10px;color:var(--secondary-text-color)">${s.label} · ${cnt} Blöcke</span>
+            ${cnt > 0 ? `<button class="btn btn-secondary" style="font-size:10px;padding:2px 8px"
+              data-action="import-ha-sched" data-room-id="${room.room_id}"
+              data-entity="${hg.entityId}" data-blocks='${JSON.stringify(haBlocks[hg.entityId])}'>📥 Als IHC-Zeitplan importieren</button>`
+              : `<span style="font-size:10px;color:#e53935">⚠️ Keine Blöcke gelesen</span>`}
+          </div>`;
+        }).join("")}
+      </div>` : "";
+
+    const yamlBanner = yamlEntityIds.size > 0 ? `
+      <div style="margin-top:8px;padding:8px 12px;background:#fff8e1;border:1px solid #f9a825;border-radius:8px;font-size:11px;line-height:1.5">
+        <strong>ℹ️ YAML-Zeitpläne erkannt:</strong>
+        ${[...yamlEntityIds].map(eid => `<code>${eid}</code>`).join(", ")}<br>
+        Diese Zeitpläne wurden via <strong>YAML</strong> angelegt. Die Wochenansicht ist nur für Zeitpläne verfügbar die
+        im HA-UI erstellt wurden (Einstellungen → Helfer → Zeitplan).
+        Die <strong>Heizfunktion</strong> arbeitet trotzdem korrekt – nur die visuelle Übersicht fehlt.<br>
+        <em>Lösung: Zeitplan im HA-UI neu erstellen und den YAML-Eintrag entfernen.</em>
+      </div>` : "";
+
+    const haSchedsConfigured = haSchedsCfg.length > 0;
+    const haBlocksEmpty = haGrids.length === 0 && yamlEntityIds.size === 0;
+    const haNoBlocksHint = haSchedsConfigured && haBlocksEmpty
+      ? `<div style="font-size:11px;color:#e65100;margin-top:6px;padding:6px 8px;background:color-mix(in srgb,#e65100 10%,transparent);border-radius:6px">
+          ⚠️ HA-Zeitpläne konfiguriert, aber keine Blöcke lesbar.
+          Stelle sicher, dass die Entitäten existieren und als UI-Helfer (nicht YAML) im HA angelegt wurden.
+         </div>` : "";
+
+    const noHint = allScheds.length === 0 && haGrids.length === 0 && yamlEntityIds.size === 0 && !haSchedsConfigured
       ? `<div style="font-size:11px;color:var(--secondary-text-color);margin-top:8px">
           Kein Zeitplan — wechsle zum Tab <strong>📅 Zeitplan</strong> um einen zu erstellen.
          </div>` : "";
@@ -1716,7 +1776,7 @@ class IHCPanel extends HTMLElement {
     container.innerHTML = `
       <div class="card">
         <div class="info-box" style="margin-bottom:12px">
-          Zeitpläne farbig nach Temperatur (blau=kalt → rot=warm). Grau = Bedingung nicht erfüllt → inaktiv.
+          IHC-Zeitpläne farbig nach Temperatur (blau=kalt → rot=warm). Grau = Bedingung nicht erfüllt. HA-Zeitpläne blass nach Modus.
         </div>
         <div style="display:flex;margin-left:24px;margin-bottom:2px">${cols}</div>
         ${rows}
@@ -1726,9 +1786,33 @@ class IHCPanel extends HTMLElement {
           <span>Warm</span>
         </div>
         ${schedLegend}
+        ${haLegend}
+        ${yamlBanner}
+        ${haNoBlocksHint}
         ${noHint}
       </div>`;
 
+    container.querySelectorAll("[data-action='import-ha-sched']").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const roomId = btn.dataset.roomId;
+        let blocks;
+        try { blocks = JSON.parse(btn.dataset.blocks); } catch { return; }
+        if (!blocks.length) return;
+        const tempStr = prompt(`Temperatur für importierte Blöcke (°C)?\nLeer = 21°C`, "21");
+        const temperature = parseFloat(tempStr) || 21;
+        const schedules = blocks.map(b => ({
+          days: b.days,
+          periods: (b.periods || []).map(p => ({ start: p.start, end: p.end, temperature, offset: 0 })),
+        }));
+        await this._callService("update_room", { id: roomId, schedules });
+        this._toast(`✓ Importiert – prüfe Tab Zeitplan`);
+        delete this._editingSchedules[room.entity_id];
+        setTimeout(() => {
+          const tc = this.shadowRoot.querySelector("#tab-content");
+          if (tc) this._renderRoomDetail(room, tc);
+        }, 1200);
+      });
+    });
   }
 
   // ── Übersicht (Diagnose) Tab ────────────────────────────────────────────────
