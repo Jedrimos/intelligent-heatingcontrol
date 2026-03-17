@@ -176,6 +176,10 @@ SERVICE_SET_ROOM_MODE: Final = "set_room_mode"
 SERVICE_SET_SYSTEM_MODE: Final = "set_system_mode"
 SERVICE_BOOST_ROOM: Final = "boost_room"
 SERVICE_RELOAD: Final = "reload"
+SERVICE_EXPORT_CONFIG: Final = "export_config"
+SERVICE_ACTIVATE_GUEST_MODE: Final = "activate_guest_mode"
+SERVICE_DEACTIVATE_GUEST_MODE: Final = "deactivate_guest_mode"
+SERVICE_RESET_STATS: Final = "reset_stats"
 
 # Roadmap 1.3 – Energy optimisation
 CONF_BOILER_KW: Final = "boiler_kw"                             # kW output of the heating system
