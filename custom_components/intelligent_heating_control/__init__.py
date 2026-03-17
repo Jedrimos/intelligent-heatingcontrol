@@ -331,7 +331,7 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
             "demand_threshold", "demand_hysteresis", "min_on_time", "min_off_time",
             "min_rooms_demand", "away_temp", "vacation_temp",
             "summer_mode_enabled", "summer_threshold",
-            "frost_protection_temp",
+            "frost_protection_temp", "off_use_frost_protection",
             "night_setback_enabled", "night_setback_offset", "sun_entity",
             "preheat_minutes",
             "presence_entities",
