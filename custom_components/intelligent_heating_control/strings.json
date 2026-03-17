@@ -1,0 +1,246 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Basic Settings",
+        "description": "Configure the outdoor temperature sensor and the heating switch.",
+        "data": {
+          "outdoor_temp_sensor": "Outdoor Temperature Sensor",
+          "heating_switch": "Heating Switch",
+          "enable_cooling": "Enable Cooling",
+          "cooling_switch": "Cooling Switch"
+        },
+        "data_description": {
+          "outdoor_temp_sensor": "Sensor measuring the current outdoor temperature. Used for the heating curve – the colder outside, the higher the target temperature.",
+          "heating_switch": "The switch that turns your heating on and off (e.g. boiler controller, heating relay).",
+          "enable_cooling": "Enable if your system can also cool (e.g. heat pump with cooling mode).",
+          "cooling_switch": "The switch that activates cooling mode. Only turns on when rooms are too warm."
+        }
+      },
+      "controller": {
+        "title": "Climate Module Settings",
+        "description": "These settings determine when the heating switches on and off. Heating demand from all rooms is combined and compared to the threshold.",
+        "data": {
+          "demand_threshold": "Turn-on Threshold (%)",
+          "demand_hysteresis": "Hysteresis (%)",
+          "min_on_time": "Minimum On-Time (min)",
+          "min_off_time": "Minimum Off-Time (min)",
+          "min_rooms_demand": "Minimum Rooms Demanding Heat"
+        },
+        "data_description": {
+          "demand_threshold": "Total heating demand (0–100%) at which the heating should turn on. Recommendation: 20–40%. Lower values = heating turns on earlier.",
+          "demand_hysteresis": "Buffer to prevent the heating from constantly switching on and off. The heating only turns off when demand falls this much below the threshold. Recommendation: 5–10%.",
+          "min_on_time": "Minimum number of minutes the heating must stay on before it can turn off again. Protects the boiler from short cycling.",
+          "min_off_time": "Minimum number of minutes the heating must stay off before it can turn on again. Protects the boiler from short cycling.",
+          "min_rooms_demand": "How many rooms must simultaneously request heat before the heating turns on. Prevents the heating from running for just one room."
+        }
+      },
+      "temperatures": {
+        "title": "Temperature Presets",
+        "description": "Global temperatures for away and vacation modes.",
+        "data": {
+          "away_temp": "Away Temperature (°C)",
+          "vacation_temp": "Vacation Temperature (°C)"
+        },
+        "data_description": {
+          "away_temp": "Target temperature for all rooms when 'Away' mode is active (e.g. nobody home during the day). Typical: 16–18 °C.",
+          "vacation_temp": "Target temperature for all rooms in vacation mode. Frost protection only. Typical: 14–16 °C."
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Entity not found. Please check the entity ID.",
+      "cannot_connect": "Connection failed",
+      "unknown": "Unknown error"
+    },
+    "abort": {
+      "already_configured": "Integration already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "IHC Options",
+        "menu_options": {
+          "global_settings": "Global Settings",
+          "heating_curve": "Edit Heating Curve",
+          "add_room": "Add Room",
+          "edit_room": "Edit Room",
+          "remove_room": "Remove Room"
+        }
+      },
+      "global_settings": {
+        "title": "Global Settings",
+        "data": {
+          "outdoor_temp_sensor": "Outdoor Temperature Sensor",
+          "heating_switch": "Heating Switch",
+          "enable_cooling": "Enable Cooling",
+          "cooling_switch": "Cooling Switch",
+          "demand_threshold": "Turn-on Threshold (%)",
+          "demand_hysteresis": "Hysteresis (%)",
+          "min_on_time": "Minimum On-Time (min)",
+          "min_off_time": "Minimum Off-Time (min)",
+          "min_rooms_demand": "Minimum Rooms Demanding Heat",
+          "away_temp": "Away Temperature (°C)",
+          "vacation_temp": "Vacation Temperature (°C)",
+          "summer_mode_enabled": "Enable Summer Mode",
+          "summer_threshold": "Summer Mode Threshold (°C)",
+          "show_panel": "Show IHC Dashboard in sidebar",
+          "presence_entities": "Presence Entities",
+          "frost_protection_temp": "Frost Protection Temperature (°C)",
+          "night_setback_enabled": "Enable Night Setback",
+          "night_setback_offset": "Night Setback Offset (°C)",
+          "sun_entity": "Sun Entity",
+          "preheat_minutes": "Pre-heat Lead Time (minutes)"
+        },
+        "data_description": {
+          "outdoor_temp_sensor": "Sensor measuring the current outdoor temperature. Used for the heating curve.",
+          "heating_switch": "The switch that turns your heating on and off (e.g. boiler controller, heating relay).",
+          "enable_cooling": "Enable if your system can also cool (e.g. heat pump with cooling mode).",
+          "cooling_switch": "The switch that activates cooling mode.",
+          "demand_threshold": "Total heating demand (0–100%) at which the heating turns on. Recommendation: 20–40%.",
+          "demand_hysteresis": "Buffer against constant on/off switching. Recommendation: 5–10%.",
+          "min_on_time": "Minimum run time of the heating in minutes. Protects the boiler from short cycling.",
+          "min_off_time": "Minimum pause time of the heating in minutes. Protects the boiler from short cycling.",
+          "min_rooms_demand": "How many rooms must simultaneously request heat before the heating turns on.",
+          "away_temp": "Target temperature in Away mode for all rooms. Typical: 16–18 °C.",
+          "vacation_temp": "Target temperature in Vacation mode. Frost protection only. Typical: 14–16 °C.",
+          "summer_mode_enabled": "When enabled, heating is automatically blocked when outdoor temperature exceeds the threshold.",
+          "summer_threshold": "Outdoor temperature above which Summer Mode disables heating. Typical: 15–20 °C.",
+          "show_panel": "When disabled, the IHC dashboard is removed from the sidebar. All entities remain available.",
+          "presence_entities": "Person or device tracker entities for presence detection. When all persons are away, IHC automatically switches to Away mode. Leave empty to disable.",
+          "frost_protection_temp": "Minimum safety temperature. Even in OFF or Away mode, this temperature is never undercut. Recommendation: 7 °C.",
+          "night_setback_enabled": "When enabled, target temperatures are automatically reduced at night (when the sun is below the horizon).",
+          "night_setback_offset": "How many degrees the target temperature is reduced at night. Typical: 2–4 °C.",
+          "sun_entity": "Sun entity used to detect day/night. Default: sun.sun",
+          "preheat_minutes": "How many minutes before a scheduled period starts that heating begins pre-heating. 0 = pre-heat disabled."
+        }
+      },
+      "heating_curve": {
+        "title": "Heating Curve",
+        "description": "Define up to 7 points of the heating curve. outdoor = outdoor temperature, target = base target temperature (before room offset).",
+        "data": {
+          "outdoor_0": "Point 1: Outdoor Temp (°C)",
+          "target_0": "Point 1: Target Temp (°C)",
+          "outdoor_1": "Point 2: Outdoor Temp (°C)",
+          "target_1": "Point 2: Target Temp (°C)",
+          "outdoor_2": "Point 3: Outdoor Temp (°C)",
+          "target_2": "Point 3: Target Temp (°C)",
+          "outdoor_3": "Point 4: Outdoor Temp (°C)",
+          "target_3": "Point 4: Target Temp (°C)",
+          "outdoor_4": "Point 5: Outdoor Temp (°C)",
+          "target_4": "Point 5: Target Temp (°C)",
+          "outdoor_5": "Point 6: Outdoor Temp (°C)",
+          "target_5": "Point 6: Target Temp (°C)",
+          "outdoor_6": "Point 7: Outdoor Temp (°C)",
+          "target_6": "Point 7: Target Temp (°C)"
+        }
+      },
+      "add_room": {
+        "title": "Add Room",
+        "data": {
+          "name": "Room Name",
+          "temp_sensor": "Temperature Sensor",
+          "valve_entity": "Thermostat / Valve Entity (optional)",
+          "window_sensor": "Window Sensor (optional)",
+          "room_offset": "Room Offset (°C)",
+          "deadband": "Deadband (°C)",
+          "weight": "Weight",
+          "comfort_temp": "Comfort Temperature (°C)",
+          "eco_temp": "Eco Temperature (°C)",
+          "sleep_temp": "Sleep Temperature (°C)",
+          "away_temp_room": "Away Temperature (°C)",
+          "min_temp": "Minimum Temperature (°C)",
+          "max_temp": "Maximum Temperature (°C)"
+        },
+        "data_description": {
+          "name": "A unique name for this room, e.g. 'Living Room' or 'Bedroom'.",
+          "temp_sensor": "Temperature sensor in this room measuring the current room temperature.",
+          "valve_entity": "Optional radiator thermostat (TRV) or climate entity in this room. If provided, the setpoint is automatically adjusted.",
+          "window_sensor": "Optional window or door sensor. When open, the heating demand for this room is disabled.",
+          "room_offset": "Correction value if the sensor is slightly inaccurate or mounted in a bad spot. Positive = sensor reads too cold.",
+          "deadband": "Sensitivity of the control. Smaller value = reacts faster but switches more often. Recommendation: 0.5 °C.",
+          "weight": "How much this room influences the total demand. Higher value = more influence. Recommendation: 1.0 for normal rooms.",
+          "comfort_temp": "Desired temperature in Comfort mode (e.g. when someone is home). Typical: 20–22 °C.",
+          "eco_temp": "Reduced temperature in Eco mode (e.g. at night or short absence). Typical: 17–19 °C.",
+          "sleep_temp": "Temperature in Sleep mode. Usually cooler than Eco. Typical: 16–18 °C.",
+          "away_temp_room": "Frost protection temperature when this room is set to 'Away'. Typical: 15–16 °C.",
+          "min_temp": "Lowest temperature that must never be undercut (frost protection). Recommendation: 7–10 °C.",
+          "max_temp": "Highest temperature that should not be exceeded. Protection against overheating. Recommendation: 25–28 °C."
+        }
+      },
+      "edit_room": {
+        "title": "Select Room",
+        "data": {
+          "room_id": "Room"
+        }
+      },
+      "edit_room_details": {
+        "title": "Edit Room",
+        "data": {
+          "name": "Room Name",
+          "temp_sensor": "Temperature Sensor",
+          "valve_entity": "Thermostat / Valve Entity (optional)",
+          "window_sensor": "Window Sensor (optional)",
+          "room_offset": "Room Offset (°C)",
+          "deadband": "Deadband (°C)",
+          "weight": "Weight",
+          "comfort_temp": "Comfort Temperature (°C)",
+          "eco_temp": "Eco Temperature (°C)",
+          "sleep_temp": "Sleep Temperature (°C)",
+          "away_temp_room": "Away Temperature (°C)",
+          "min_temp": "Minimum Temperature (°C)",
+          "max_temp": "Maximum Temperature (°C)"
+        },
+        "data_description": {
+          "name": "A unique name for this room, e.g. 'Living Room' or 'Bedroom'.",
+          "temp_sensor": "Temperature sensor in this room measuring the current room temperature.",
+          "valve_entity": "Optional radiator thermostat (TRV) or climate entity in this room. If provided, the setpoint is automatically adjusted.",
+          "window_sensor": "Optional window or door sensor. When open, the heating demand for this room is disabled.",
+          "room_offset": "Correction value if the sensor is slightly inaccurate or mounted in a bad spot. Positive = sensor reads too cold.",
+          "deadband": "Sensitivity of the control. Smaller value = reacts faster but switches more often. Recommendation: 0.5 °C.",
+          "weight": "How much this room influences the total demand. Higher value = more influence. Recommendation: 1.0 for normal rooms.",
+          "comfort_temp": "Desired temperature in Comfort mode (e.g. when someone is home). Typical: 20–22 °C.",
+          "eco_temp": "Reduced temperature in Eco mode (e.g. at night or short absence). Typical: 17–19 °C.",
+          "sleep_temp": "Temperature in Sleep mode. Usually cooler than Eco. Typical: 16–18 °C.",
+          "away_temp_room": "Frost protection temperature when this room is set to 'Away'. Typical: 15–16 °C.",
+          "min_temp": "Lowest temperature that must never be undercut (frost protection). Recommendation: 7–10 °C.",
+          "max_temp": "Highest temperature that should not be exceeded. Protection against overheating. Recommendation: 25–28 °C."
+        }
+      },
+      "remove_room": {
+        "title": "Remove Room",
+        "data": {
+          "room_id": "Select Room"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Entity not found",
+      "invalid_curve": "Invalid heating curve data",
+      "no_rooms": "No rooms configured"
+    },
+    "abort": {
+      "no_rooms": "No rooms configured",
+      "room_not_found": "Room not found"
+    }
+  },
+  "entity": {
+    "climate": {
+      "ihc_room_climate": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "Auto": "Auto",
+              "Comfort": "Comfort",
+              "Eco": "Eco",
+              "Sleep": "Sleep",
+              "Away": "Away",
+              "Manual": "Manual"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -466,3 +466,31 @@ update_global_settings:
 reload:
   name: Integration neu laden
   description: Lädt die Intelligent Heating Control Integration neu.
+
+export_config:
+  name: Konfiguration exportieren
+  description: Exportiert die aktuelle IHC-Konfiguration als JSON in eine persistente Benachrichtigung.
+
+activate_guest_mode:
+  name: Gäste-Modus aktivieren
+  description: Aktiviert den Gäste-Modus für eine bestimmte Dauer.
+  fields:
+    duration_hours:
+      name: Dauer (Stunden)
+      description: Wie lange der Gäste-Modus aktiv sein soll (Standard aus Konfiguration)
+      required: false
+      default: 24
+      selector:
+        number:
+          min: 1
+          max: 168
+          step: 1
+          unit_of_measurement: "h"
+
+deactivate_guest_mode:
+  name: Gäste-Modus deaktivieren
+  description: Deaktiviert den Gäste-Modus und kehrt zum vorherigen Systemzustand zurück.
+
+reset_stats:
+  name: Statistik zurücksetzen
+  description: Setzt alle Laufzeit- und Energiestatistiken auf Null zurück.
