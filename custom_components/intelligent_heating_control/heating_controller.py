@@ -196,6 +196,18 @@ class HeatingController:
         if system_mode in (SYSTEM_MODE_OFF, SYSTEM_MODE_COOL):
             return self._apply_min_time(False)
 
+        # Emergency: if every active room has its window open, cut heating immediately
+        # (no min_on_time delay – heating with open windows wastes energy)
+        active_states = [
+            s for s in self._room_states.values()
+            if s["room_mode"] != ROOM_MODE_OFF
+        ]
+        if active_states and all(s.get("window_open", False) for s in active_states):
+            if self._heating_active:
+                self._heating_active = False
+                self._last_heating_state_change = datetime.now()
+            return False
+
         total_demand = self.get_total_demand()
         rooms_demanding = self.get_rooms_demanding()
 

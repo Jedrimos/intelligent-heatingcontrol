@@ -2216,6 +2216,49 @@ class IHCCoordinator(DataUpdateCoordinator):
         if single and single not in room.get(CONF_VALVE_ENTITIES, []):
             self._turn_off_valve_entity(single)
 
+    def _prefill_window_states(self) -> None:
+        """Pre-populate _window_open_since for windows that are already open at startup.
+
+        Without this, after an HA restart the system needs to wait reaction_time seconds
+        before recognizing an already-open window.  During that gap a mode change would
+        compute a demand and potentially start heating even though the window is open.
+
+        Fix: if a window sensor is already ON at startup, set _window_open_since to
+        ``now - reaction_time`` so the very first call to _is_window_open returns True.
+        """
+        now = time.monotonic()
+        for room in self.get_rooms():
+            room_id = room.get(CONF_ROOM_ID, "")
+            if not room_id:
+                continue
+            if room_id in self._window_open_since and self._window_open_since[room_id] is not None:
+                continue  # already tracked
+
+            reaction_time = int(room.get(CONF_WINDOW_REACTION_TIME, DEFAULT_WINDOW_REACTION_TIME))
+
+            # Check all window sensors
+            sensor_open = False
+            for sensor in room.get(CONF_WINDOW_SENSORS, []):
+                if sensor:
+                    state = self.hass.states.get(sensor)
+                    if state and state.state == STATE_ON:
+                        sensor_open = True
+                        break
+            if not sensor_open:
+                single = room.get(CONF_WINDOW_SENSOR)
+                if single:
+                    state = self.hass.states.get(single)
+                    if state and state.state == STATE_ON:
+                        sensor_open = True
+
+            if sensor_open:
+                # Mark window as already open long enough to react immediately
+                self._window_open_since[room_id] = now - reaction_time
+                _LOGGER.debug(
+                    "IHC: Startup – window already open in '%s', pre-filled reaction timer",
+                    room.get(CONF_ROOM_NAME, room_id),
+                )
+
     def _prefill_last_sent_temps(self) -> None:
         """Pre-populate _last_sent_temps with TRVs' current target temperatures.
 
@@ -2334,6 +2377,7 @@ class IHCCoordinator(DataUpdateCoordinator):
         # This prevents false "manuell bedient" notifications right after HA restart.
         if self._startup_cycles_remaining > 0:
             self._startup_cycles_remaining -= 1
+            self._prefill_window_states()
             self._prefill_last_sent_temps()
 
         # Expire any boost timers
