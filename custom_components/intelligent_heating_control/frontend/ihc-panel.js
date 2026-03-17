@@ -3247,10 +3247,10 @@ class IHCPanel extends HTMLElement {
           </div>
           <div class="settings-item">
             <label>Ventil-Position als Demand</label>
-            <select class="form-select" id="m-trv-valve-demand">
-              <option value="false" selected>Deaktiviert</option>
-              <option value="true">Aktiviert</option>
-            </select>
+            <label class="checkbox-row">
+              <input type="checkbox" id="m-trv-valve-demand">
+              <span>Aktiviert</span>
+            </label>
             <span class="form-hint">TRV-Ventilöffnung in Heizbedarf-Berechnung einbeziehen</span>
           </div>
           <div class="settings-item">
@@ -3377,7 +3377,7 @@ class IHCPanel extends HTMLElement {
         boost_temp:             parseFloat(modal.querySelector("#m-boost-temp")?.value) || null,
         trv_temp_weight:        parseFloat(modal.querySelector("#m-trv-temp-weight")?.value) || 0,
         trv_temp_offset:        parseFloat(modal.querySelector("#m-trv-temp-offset")?.value ?? "-2"),
-        trv_valve_demand:       modal.querySelector("#m-trv-valve-demand")?.value === "true",
+        trv_valve_demand:       modal.querySelector("#m-trv-valve-demand")?.checked === true,
         trv_min_send_interval:  parseInt(modal.querySelector("#m-trv-min-send-interval")?.value, 10) || 0,
         ha_schedules,
       });

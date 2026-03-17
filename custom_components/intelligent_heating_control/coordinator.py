@@ -18,7 +18,7 @@ import math
 import time
 import uuid
 from collections import deque
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from homeassistant.core import HomeAssistant, callback, Event
@@ -338,8 +338,11 @@ class IHCCoordinator(DataUpdateCoordinator):
         self._window_open_since: Dict[str, Optional[float]] = {}   # room_id → epoch when opened
         self._window_closed_since: Dict[str, Optional[float]] = {} # room_id → epoch when closed
 
-        # Event-driven window detection: unsubscribe callbacks per sensor entity_id
-        self._window_sensor_unsubs: Dict[str, Any] = {}
+        # Event-driven window detection: single subscription for all window sensors.
+        # Using one subscription (not per-sensor) avoids a bug where removing one sensor
+        # would cancel the shared unsub and leave all other sensors unmonitored.
+        self._window_listener_unsub: Optional[Any] = None   # single unsub callback
+        self._window_listener_sensors: set = set()           # currently subscribed sensors
 
         # Build sub-components from config
         self._rebuild_from_config()
@@ -508,7 +511,7 @@ class IHCCoordinator(DataUpdateCoordinator):
         boost_temp = temp
         if boost_temp is None:
             room_cfg = self.get_room_config(room_id)
-            boost_temp = room_cfg.get("boost_temp") if room_cfg else None
+            boost_temp = room_cfg.get(CONF_BOOST_TEMP) if room_cfg else None
         if boost_temp is not None:
             self._room_modes[room_id] = ROOM_MODE_MANUAL
             self._room_manual_temps[room_id] = float(boost_temp)
@@ -1471,7 +1474,6 @@ class IHCCoordinator(DataUpdateCoordinator):
                 eta_dt = datetime.fromisoformat(str(eta_attr).replace("Z", "+00:00"))
                 # Normalise to naive local time for comparison
                 if eta_dt.tzinfo is not None:
-                    from datetime import timezone
                     eta_dt = eta_dt.astimezone(timezone.utc).replace(tzinfo=None)
                 minutes = (eta_dt - datetime.utcnow()).total_seconds() / 60
                 if 0 < minutes <= 120:
@@ -2327,9 +2329,13 @@ class IHCCoordinator(DataUpdateCoordinator):
     def _setup_window_listeners(self) -> None:
         """Subscribe to state changes of all window sensors for event-driven detection.
 
-        When a window sensor changes to ON, immediately trigger a coordinator refresh
+        When a window sensor changes state, immediately trigger a coordinator refresh
         so the reaction_time countdown starts right away instead of waiting up to
         UPDATE_INTERVAL seconds (60s) before the next timer-based cycle.
+
+        Uses a SINGLE subscription for all sensors (not per-sensor).  A per-sensor
+        approach had a bug: removing one sensor called the shared unsub and silently
+        cancelled monitoring for ALL sensors.
         """
         # Collect all configured window sensor entity_ids
         sensor_ids: set[str] = set()
@@ -2341,14 +2347,18 @@ class IHCCoordinator(DataUpdateCoordinator):
             if single:
                 sensor_ids.add(single)
 
-        # Remove listeners for sensors no longer in config
-        removed = set(self._window_sensor_unsubs) - sensor_ids
-        for sid in removed:
-            self._window_sensor_unsubs.pop(sid)()
+        # Nothing to do if sensor set hasn't changed
+        if sensor_ids == self._window_listener_sensors:
+            return
 
-        # Subscribe to new sensors
-        new_sensors = sensor_ids - set(self._window_sensor_unsubs)
-        if not new_sensors:
+        # Cancel the old subscription (covers previous sensor set)
+        if self._window_listener_unsub is not None:
+            self._window_listener_unsub()
+            self._window_listener_unsub = None
+
+        self._window_listener_sensors = sensor_ids
+
+        if not sensor_ids:
             return
 
         @callback
@@ -2366,11 +2376,9 @@ class IHCCoordinator(DataUpdateCoordinator):
                 )
                 self.hass.async_create_task(self.async_request_refresh())
 
-        unsub = async_track_state_change_event(
-            self.hass, list(new_sensors), _on_window_sensor_change
+        self._window_listener_unsub = async_track_state_change_event(
+            self.hass, list(sensor_ids), _on_window_sensor_change
         )
-        for sid in new_sensors:
-            self._window_sensor_unsubs[sid] = unsub
 
     def _detect_manual_trv_override(self, room: dict, room_id: str, room_mode: str) -> None:
         """Detect if a TRV was manually adjusted and switch room to manual mode.
@@ -2928,7 +2936,7 @@ class IHCCoordinator(DataUpdateCoordinator):
     def get_ha_schedule_blocks_for_room(self, room: dict) -> dict[str, list[dict]]:
         """Return {entity_id: [blocks]} for all ha_schedules configured for a room."""
         result: dict[str, list[dict]] = {}
-        for ha_sched in room.get("ha_schedules", []):
+        for ha_sched in room.get(CONF_HA_SCHEDULES, []):
             entity_id = ha_sched.get("entity", "")
             if entity_id:
                 result[entity_id] = self._get_ha_schedule_blocks(entity_id)

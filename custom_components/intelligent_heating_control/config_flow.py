@@ -719,11 +719,20 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_ECO_OFFSET, default=DEFAULT_ECO_OFFSET): selector.selector({
                 "number": {"min": 0, "max": 8, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
+            vol.Optional(CONF_ECO_MAX_TEMP, default=DEFAULT_ECO_MAX_TEMP): selector.selector({
+                "number": {"min": 14, "max": 26, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
             vol.Optional(CONF_SLEEP_OFFSET, default=DEFAULT_SLEEP_OFFSET): selector.selector({
                 "number": {"min": 0, "max": 8, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
+            vol.Optional(CONF_SLEEP_MAX_TEMP, default=DEFAULT_SLEEP_MAX_TEMP): selector.selector({
+                "number": {"min": 12, "max": 24, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
             vol.Optional(CONF_AWAY_OFFSET, default=DEFAULT_AWAY_OFFSET): selector.selector({
                 "number": {"min": 0, "max": 10, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_AWAY_MAX_TEMP, default=DEFAULT_AWAY_MAX_TEMP): selector.selector({
+                "number": {"min": 10, "max": 22, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
             vol.Optional(CONF_MIN_TEMP, default=DEFAULT_MIN_TEMP): selector.selector({
                 "number": {"min": 5, "max": 15, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
@@ -848,11 +857,20 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_ECO_OFFSET, default=float(room.get(CONF_ECO_OFFSET, DEFAULT_ECO_OFFSET))): selector.selector({
                 "number": {"min": 0, "max": 8, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
+            vol.Optional(CONF_ECO_MAX_TEMP, default=float(room.get(CONF_ECO_MAX_TEMP, DEFAULT_ECO_MAX_TEMP))): selector.selector({
+                "number": {"min": 14, "max": 26, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
             vol.Optional(CONF_SLEEP_OFFSET, default=float(room.get(CONF_SLEEP_OFFSET, DEFAULT_SLEEP_OFFSET))): selector.selector({
                 "number": {"min": 0, "max": 8, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
+            vol.Optional(CONF_SLEEP_MAX_TEMP, default=float(room.get(CONF_SLEEP_MAX_TEMP, DEFAULT_SLEEP_MAX_TEMP))): selector.selector({
+                "number": {"min": 12, "max": 24, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
             vol.Optional(CONF_AWAY_OFFSET, default=float(room.get(CONF_AWAY_OFFSET, DEFAULT_AWAY_OFFSET))): selector.selector({
                 "number": {"min": 0, "max": 10, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_AWAY_MAX_TEMP, default=float(room.get(CONF_AWAY_MAX_TEMP, DEFAULT_AWAY_MAX_TEMP))): selector.selector({
+                "number": {"min": 10, "max": 22, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
             vol.Optional(CONF_MIN_TEMP, default=float(room.get(CONF_MIN_TEMP, DEFAULT_MIN_TEMP))): selector.selector({
                 "number": {"min": 5, "max": 15, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
