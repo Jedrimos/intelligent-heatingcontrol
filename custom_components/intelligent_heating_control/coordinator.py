@@ -1293,11 +1293,20 @@ class IHCCoordinator(DataUpdateCoordinator):
                 self._heating_started_at = None
 
         # Per-room demand runtime
-        # TRV mode: count whenever TRV is open (demand > 0) – building heating runs independently
+        # TRV mode: prefer valve position > threshold as heating signal – it reacts faster
+        #           and directly represents actual heat flow (no lag from room sensor).
+        #           Falls back to demand > 0 when valve data is not available.
         # Switch mode: count only when central heater is also on (demand > 0 AND should_heat)
         for room_id, rdata in room_data.items():
             demand = rdata.get("demand", 0.0)
-            room_heating = demand > 0 and (should_heat or controller_mode == CONTROLLER_MODE_TRV)
+            if controller_mode == CONTROLLER_MODE_TRV:
+                avg_valve = rdata.get("trv_avg_valve")
+                if avg_valve is not None:
+                    room_heating = avg_valve > 8  # valve open → actively heating
+                else:
+                    room_heating = demand > 0
+            else:
+                room_heating = demand > 0 and should_heat
             if room_heating:
                 if room_id not in self._room_demand_started:
                     self._room_demand_started[room_id] = now
@@ -1754,24 +1763,37 @@ class IHCCoordinator(DataUpdateCoordinator):
         blended = room_temp * (1.0 - weight) + corrected_trv * weight
         return round(blended, 1), trv_avg
 
-    def _apply_trv_valve_demand(self, demand: float, trv_data: dict) -> float:
-        """Optionally correct demand based on TRV valve position.
+    def _apply_trv_valve_demand(self, demand: float, trv_data: dict, trv_mode: bool = False) -> float:
+        """Correct demand based on TRV valve position.
 
-        - Valve > 85 %: TRV is fully open → ensure minimum demand of 30
-        - Valve < 8 %: TRV nearly closed → cap demand at 30
-        - In between: blend temperature-based demand (70%) with valve-based (30%)
+        In TRV controller mode (auto-applied when valve data is available):
+          The valve position IS the most accurate demand signal – it reflects what
+          the TRV's own thermostat decided, reacts instantly, and is not affected by
+          sensor lag or room stratification.
+          Blending: 40 % temp-based (target context) + 60 % valve-based (actual demand).
+
+        In switch mode (opt-in via CONF_TRV_VALVE_DEMAND):
+          Conservative correction – only clamps extreme outliers.
+          - Valve > 85 %: TRV fully open → raise demand floor to 30
+          - Valve < 8 %: TRV nearly closed → cap demand at 30
+          - In between: 70 % temp-based + 30 % valve-based
         """
         avg_valve = trv_data.get("trv_avg_valve")
         if avg_valve is None:
             return demand
 
-        valve_demand = avg_valve  # valve position maps directly to 0-100 demand
+        valve_demand = avg_valve  # valve position maps directly to demand 0-100
 
+        if trv_mode:
+            # Valve is dominant: fast-reacting, physically accurate
+            blended = demand * 0.40 + valve_demand * 0.60
+            return round(max(0.0, min(100.0, blended)), 1)
+
+        # Switch mode: conservative
         if avg_valve > 85:
             return max(demand, 30.0)
         if avg_valve < 8:
             return min(demand, 30.0)
-        # Blend – temperature signal stays dominant
         blended = demand * 0.70 + valve_demand * 0.30
         return round(max(0.0, min(100.0, blended)), 1)
 
@@ -2614,9 +2636,15 @@ class IHCCoordinator(DataUpdateCoordinator):
             # Warmup tracking: update predictive pre-heat data (Roadmap 1.1)
             demand = controller_state["demand"]
 
-            # Optional: correct demand using TRV valve position
-            if room.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND):
-                demand = self._apply_trv_valve_demand(demand, trv_data)
+            # Correct demand using TRV valve position:
+            # In TRV mode: auto-applied whenever valve data is available – the valve
+            # position reacts instantly and is physically closer to actual heat flow
+            # than a room temperature delta calculation.
+            # In switch mode: only applied when explicitly enabled via CONF_TRV_VALVE_DEMAND.
+            _ctrl_mode = self.get_config().get(CONF_CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE)
+            _trv_mode = _ctrl_mode == CONTROLLER_MODE_TRV
+            if _trv_mode or room.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND):
+                demand = self._apply_trv_valve_demand(demand, trv_data, trv_mode=_trv_mode)
 
             self._update_warmup_tracking(
                 room_id,
