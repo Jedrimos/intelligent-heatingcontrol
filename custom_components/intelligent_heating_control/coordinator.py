@@ -830,12 +830,22 @@ class IHCCoordinator(DataUpdateCoordinator):
             return "temp_drop"
         return None
 
+    def _is_schedule_group_active(self, schedule_group: dict) -> bool:
+        """Return True if the schedule group's condition is met (or no condition is set)."""
+        condition_entity = schedule_group.get("condition_entity", "")
+        if not condition_entity:
+            return True
+        state = self.hass.states.get(condition_entity)
+        expected = schedule_group.get("condition_state", "on")
+        return state is not None and state.state == expected
+
     def get_next_schedule_period(self, room_id: str) -> Optional[dict]:
         """Return the next scheduled period for a room (for informational display)."""
         mgr = self._schedule_managers.get(room_id)
         if mgr is None:
             return None
-        return mgr.get_next_period()
+        active_scheds = [s for s in mgr.schedules if self._is_schedule_group_active(s)]
+        return ScheduleManager(active_scheds).get_next_period()
 
     def get_avg_warmup_minutes(self, room_id: str) -> Optional[float]:
         """Average warmup duration in minutes for predictive pre-heating."""
@@ -2061,8 +2071,11 @@ class IHCCoordinator(DataUpdateCoordinator):
             }
 
         # --- 3b. Active internal schedule or upcoming pre-heat period ---
-        schedule_mgr = self._schedule_managers.get(room_id)
-        if schedule_mgr:
+        # Filter schedule groups by optional condition (condition_entity / condition_state)
+        all_schedules = room.get(CONF_SCHEDULES, [])
+        if all_schedules:
+            active_scheds = [s for s in all_schedules if self._is_schedule_group_active(s)]
+            schedule_mgr = ScheduleManager(active_scheds)
             active_period = schedule_mgr.get_active_period()
 
             # Pre-heat: if no active period but an upcoming one starts within preheat_minutes

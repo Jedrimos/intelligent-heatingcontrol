@@ -565,7 +565,7 @@ const STYLES = `
     background: var(--card-background-color, #fff);
     border: 1.5px solid var(--primary-color);
     border-radius: 9px; box-shadow: 0 6px 24px rgba(0,0,0,.18);
-    max-height: 260px; overflow-y: auto; min-width: 240px;
+    max-height: 280px; overflow-y: auto; min-width: 420px;
   }
   .ep-item {
     display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: pointer;
@@ -588,9 +588,9 @@ const STYLES = `
   .ep-d-device_tracker{ background: #e8eaf6; color: #283593; }
   .ep-d-other         { background: #f5f5f5; color: #616161; }
   .ep-info { flex: 1; min-width: 0; }
-  .ep-name { font-size: 12px; font-weight: 600; color: var(--primary-text-color);
+  .ep-name { font-size: 13px; font-weight: 600; color: var(--primary-text-color);
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ep-id   { font-size: 10px; color: var(--secondary-text-color);
+  .ep-id   { font-size: 11px; color: var(--secondary-text-color);
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ep-state { font-size: 11px; font-weight: 600; color: var(--secondary-text-color);
               flex-shrink: 0; white-space: nowrap; margin-left: auto; }
@@ -1469,6 +1469,9 @@ class IHCPanel extends HTMLElement {
     const schedules = this._editingSchedules[selId];
 
     const schedBlocks = schedules.map((sched, si) => {
+      const condEntity = sched.condition_entity || "";
+      const condState  = sched.condition_state  || "on";
+      const schedName  = sched.name || "";
       const dayChips = DAY_KEYS.map((key, i) =>
         `<span class="day-chip ${sched.days.includes(key) ? "selected" : ""}"
               data-sched="${si}" data-day="${key}">${DAYS[i]}</span>`
@@ -1494,6 +1497,25 @@ class IHCPanel extends HTMLElement {
             <strong style="font-size:14px">Gruppe ${si + 1}</strong>
             <button class="btn btn-danger" style="font-size:12px;padding:4px 10px"
               data-action="del-sched" data-sched="${si}">Gruppe löschen</button>
+          </div>
+          <div style="margin-bottom:8px">
+            <div class="form-label" style="margin-bottom:4px">Name (optional)</div>
+            <input type="text" class="form-input" style="width:100%"
+              placeholder="z.B. Winter, Gäste, Sommer…"
+              data-sched="${si}" data-sched-field="name" value="${schedName}">
+          </div>
+          <div style="margin-bottom:10px;padding:8px 10px;background:var(--secondary-background-color);border-radius:6px;border:1px solid var(--divider-color)">
+            <div class="form-label" style="margin-bottom:6px">🔀 Bedingung (optional) — Gruppe nur aktiv wenn:</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <input type="text" class="form-input" style="flex:2;min-width:180px"
+                placeholder="input_boolean.winter_modus (leer = immer aktiv)"
+                data-sched="${si}" data-sched-field="condition_entity" value="${condEntity}"
+                data-ep-domains="input_boolean,binary_sensor,person,device_tracker,switch,sensor" autocomplete="off">
+              <span style="font-size:12px;color:var(--secondary-text-color);flex-shrink:0">Zustand =</span>
+              <input type="text" class="form-input" style="width:60px"
+                placeholder="on"
+                data-sched="${si}" data-sched-field="condition_state" value="${condState}">
+            </div>
           </div>
           <div style="margin-bottom:12px">
             <div class="form-label" style="margin-bottom:6px">Aktive Tage:</div>
@@ -1540,6 +1562,19 @@ class IHCPanel extends HTMLElement {
         const val = field === "start" || field === "end" ? inp.value : parseFloat(inp.value);
         this._editingSchedules[selId][si].periods[pi][field] = val;
       });
+    });
+
+    // Schedule-level fields (name, condition_entity, condition_state)
+    container.querySelectorAll("[data-sched-field]").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const si = parseInt(inp.dataset.sched);
+        const field = inp.dataset.schedField;
+        this._editingSchedules[selId][si][field] = inp.value.trim();
+      });
+    });
+    // Attach entity pickers for condition_entity fields
+    container.querySelectorAll("[data-sched-field='condition_entity']").forEach(inp => {
+      this._attachEntityPickers(inp.closest(".sched-block") || container);
     });
 
     container.querySelectorAll("[data-action='del-period']").forEach(btn => {
@@ -1612,27 +1647,23 @@ class IHCPanel extends HTMLElement {
         return null;
       })
     );
-    const HA_MODE_STYLE = {
-      comfort: { label: "Komfort", color: "rgba(255,152,0,0.35)" },
-      eco:     { label: "Eco",     color: "rgba(76,175,80,0.35)"  },
-      sleep:   { label: "Schlaf",  color: "rgba(33,150,243,0.35)" },
-      away:    { label: "Abwesend",color: "rgba(158,158,158,0.35)"},
+    // Check if a schedule group's condition is currently met (client-side)
+    const isGroupActive = (sched) => {
+      const condEntity = sched.condition_entity || "";
+      if (!condEntity) return true;
+      const state = this.hass.states[condEntity];
+      const expected = sched.condition_state || "on";
+      return state && state.state === expected;
     };
-    const ihcGrid  = buildGrid(room.schedules || []);
-    const haBlocks = room.ha_schedule_blocks || {};
-    const haSchedsCfg = room.ha_schedules || [];
-    // Detect YAML-defined schedules (sentinel returned by coordinator when no config_entry_id)
-    const yamlEntityIds = new Set(
-      Object.entries(haBlocks)
-        .filter(([, blocks]) => Array.isArray(blocks) && blocks.some(b => b._yaml_defined))
-        .map(([eid]) => eid)
-    );
-    const haGrids = Object.entries(haBlocks)
-      .filter(([eid]) => !yamlEntityIds.has(eid))
-      .map(([eid, blocks]) => {
-        const cfg = haSchedsCfg.find(s => s.entity === eid) || {};
-        return { entityId: eid, mode: cfg.mode || "comfort", grid: buildGrid(blocks, true) };
-      });
+
+    const allScheds = room.schedules || [];
+    // Active groups (condition met or no condition) → shown with temperature color
+    const activeScheds = allScheds.filter(s => isGroupActive(s));
+    // Inactive conditional groups → shown muted
+    const inactiveScheds = allScheds.filter(s => !isGroupActive(s));
+
+    const ihcGrid        = buildGrid(activeScheds);
+    const ihcGridInactive = buildGrid(inactiveScheds);
 
     const cols = HOURS.map((_, h) =>
       `<div style="font-size:9px;text-align:center;color:var(--secondary-text-color);width:${100/24}%;min-width:0">${h % 3 === 0 ? h + "h" : ""}</div>`
@@ -1640,14 +1671,19 @@ class IHCPanel extends HTMLElement {
 
     const rows = DAY_KEYS.map((dayKey, di) => {
       const cells = HOURS.map((_, h) => {
-        const ihcVal  = ihcGrid[di][h];
-        const haActive = haGrids.find(hg => hg.grid[di][h] != null);
-        let bg, label = "";
-        if (ihcVal != null) { bg = tempToColor(ihcVal); label = ihcVal; }
-        else if (haActive) { const s = HA_MODE_STYLE[haActive.mode] || HA_MODE_STYLE.comfort; bg = s.color; label = s.label[0]; }
-        else bg = "var(--secondary-background-color, #f5f5f5)";
-        const title = ihcVal != null ? `${ihcVal} °C (IHC)` : haActive ? `HA: ${haActive.entityId} → ${haActive.mode}` : "—";
-        return `<div title="${title}" style="flex:1;height:22px;background:${bg};border-radius:2px;margin:1px;display:flex;align-items:center;justify-content:center;font-size:8px;color:rgba(0,0,0,0.55);font-weight:600">${label}</div>`;
+        const val         = ihcGrid[di][h];
+        const valInactive = ihcGridInactive[di][h];
+        let bg, label = "", opacity = "1";
+        if (val != null) {
+          bg = tempToColor(val); label = val;
+        } else if (valInactive != null) {
+          // Inactive conditional group: grey/muted
+          bg = "rgba(128,128,128,0.2)"; label = ""; opacity = "0.6";
+        } else {
+          bg = "var(--secondary-background-color, #f5f5f5)";
+        }
+        const title = val != null ? `${val} °C` : valInactive != null ? `${valInactive} °C (Bedingung nicht erfüllt)` : "—";
+        return `<div title="${title}" style="flex:1;height:22px;background:${bg};opacity:${opacity};border-radius:2px;margin:1px;display:flex;align-items:center;justify-content:center;font-size:8px;color:rgba(0,0,0,0.55);font-weight:600">${label}</div>`;
       }).join("");
       return `<div style="display:flex;align-items:center;gap:0;margin-bottom:1px">
         <div style="width:24px;font-size:10px;color:var(--secondary-text-color);flex-shrink:0">${DAYS[di]}</div>
@@ -1655,45 +1691,24 @@ class IHCPanel extends HTMLElement {
       </div>`;
     }).join("");
 
-    const haLegend = haGrids.length > 0 ? `
-      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--divider-color)">
-        <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:var(--secondary-text-color)">🏠 Verknüpfte HA-Zeitpläne</div>
-        ${haGrids.map(hg => {
-          const s = HA_MODE_STYLE[hg.mode] || HA_MODE_STYLE.comfort;
-          const cnt = haBlocks[hg.entityId]?.filter(b => !b._yaml_defined).length ?? 0;
-          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-            <div style="width:14px;height:14px;border-radius:3px;background:${s.color};border:1px solid rgba(0,0,0,0.15)"></div>
-            <span style="font-size:11px;font-weight:600">${hg.entityId}</span>
-            <span style="font-size:10px;color:var(--secondary-text-color)">${s.label} · ${cnt} Blöcke</span>
-            ${cnt > 0 ? `<button class="btn btn-secondary" style="font-size:10px;padding:2px 8px"
-              data-action="import-ha-sched" data-room-id="${room.room_id}"
-              data-entity="${hg.entityId}" data-blocks='${JSON.stringify(haBlocks[hg.entityId])}'>📥 Als IHC-Zeitplan importieren</button>`
-              : `<span style="font-size:10px;color:#e53935">⚠️ Keine Blöcke gelesen</span>`}
+    // IHC schedule group legend (shows name + condition status)
+    const schedLegend = allScheds.length > 0 ? `
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--divider-color)">
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:var(--secondary-text-color)">Zeitplan-Gruppen</div>
+        ${allScheds.map((s, i) => {
+          const active = isGroupActive(s);
+          const name = s.name || `Gruppe ${i + 1}`;
+          const cond = s.condition_entity
+            ? `<span style="font-size:10px;color:${active ? "#66bb6a" : "#9e9e9e"}">${active ? "✓" : "✗"} ${s.condition_entity} = ${s.condition_state || "on"}</span>`
+            : `<span style="font-size:10px;color:#66bb6a">Immer aktiv</span>`;
+          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;opacity:${active ? "1" : "0.55"}">
+            <span style="font-size:11px;font-weight:600">${name}</span>
+            ${cond}
           </div>`;
         }).join("")}
       </div>` : "";
 
-    // YAML-defined schedules banner
-    const yamlBanner = yamlEntityIds.size > 0 ? `
-      <div style="margin-top:8px;padding:8px 12px;background:#fff8e1;border:1px solid #f9a825;border-radius:8px;font-size:11px;line-height:1.5">
-        <strong>ℹ️ YAML-Zeitpläne erkannt:</strong>
-        ${[...yamlEntityIds].map(eid => `<code>${eid}</code>`).join(", ")}<br>
-        Diese Zeitpläne wurden via <strong>YAML</strong> angelegt. Die Wochenansicht ist nur für Zeitpläne verfügbar die
-        im HA-UI erstellt wurden (Einstellungen → Helfer → Zeitplan).
-        Die <strong>Heizfunktion</strong> arbeitet trotzdem korrekt – nur die visuelle Übersicht fehlt.<br>
-        <em>Lösung: Zeitplan im HA-UI neu erstellen und den YAML-Eintrag entfernen.</em>
-      </div>` : "";
-
-    // Show hint if no HA schedule blocks loaded but ha_schedules are configured
-    const haSchedsConfigured = haSchedsCfg.length > 0;
-    const haBlocksEmpty = haGrids.length === 0 && yamlEntityIds.size === 0;
-    const haNoBlocksHint = haSchedsConfigured && haBlocksEmpty
-      ? `<div style="font-size:11px;color:#e65100;margin-top:6px;padding:6px 8px;background:color-mix(in srgb,#e65100 10%,transparent);border-radius:6px">
-          ⚠️ HA-Zeitpläne konfiguriert, aber keine Blöcke lesbar.
-          Stelle sicher, dass die Entitäten existieren und als UI-Helfer (nicht YAML) im HA angelegt wurden.
-         </div>` : "";
-
-    const noHint = (room.schedules?.length || 0) === 0 && haGrids.length === 0 && yamlEntityIds.size === 0 && !haSchedsConfigured
+    const noHint = allScheds.length === 0
       ? `<div style="font-size:11px;color:var(--secondary-text-color);margin-top:8px">
           Kein Zeitplan — wechsle zum Tab <strong>📅 Zeitplan</strong> um einen zu erstellen.
          </div>` : "";
@@ -1701,7 +1716,7 @@ class IHCPanel extends HTMLElement {
     container.innerHTML = `
       <div class="card">
         <div class="info-box" style="margin-bottom:12px">
-          IHC-Zeitpläne farbig nach Temperatur (blau=kalt → rot=warm). HA-Zeitpläne blass nach Modus.
+          Zeitpläne farbig nach Temperatur (blau=kalt → rot=warm). Grau = Bedingung nicht erfüllt → inaktiv.
         </div>
         <div style="display:flex;margin-left:24px;margin-bottom:2px">${cols}</div>
         ${rows}
@@ -1710,33 +1725,10 @@ class IHCPanel extends HTMLElement {
           <div style="flex:1;height:6px;border-radius:3px;background:linear-gradient(to right,rgb(30,100,200),rgb(200,80,20),rgb(230,40,20))"></div>
           <span>Warm</span>
         </div>
-        ${haLegend}
-        ${yamlBanner}
-        ${haNoBlocksHint}
+        ${schedLegend}
         ${noHint}
       </div>`;
 
-    container.querySelectorAll("[data-action='import-ha-sched']").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const roomId = btn.dataset.roomId;
-        let blocks;
-        try { blocks = JSON.parse(btn.dataset.blocks); } catch { return; }
-        if (!blocks.length) return;
-        const tempStr = prompt(`Temperatur für importierte Blöcke (°C)?\nLeer = 21°C`, "21");
-        const temperature = parseFloat(tempStr) || 21;
-        const schedules = blocks.map(b => ({
-          days: b.days,
-          periods: (b.periods || []).map(p => ({ start: p.start, end: p.end, temperature, offset: 0 })),
-        }));
-        await this._callService("update_room", { id: roomId, schedules });
-        this._toast(`✓ Importiert – prüfe Tab Zeitplan`);
-        delete this._editingSchedules[room.entity_id];
-        setTimeout(() => {
-          const tc = this.shadowRoot.querySelector("#tab-content");
-          if (tc) this._renderRoomDetail(room, tc);
-        }, 1200);
-      });
-    });
   }
 
   // ── Übersicht (Diagnose) Tab ────────────────────────────────────────────────
@@ -3066,9 +3058,11 @@ class IHCPanel extends HTMLElement {
 
       const positionDropdown = () => {
         const rect = input.getBoundingClientRect();
-        dropdown.style.top  = (rect.bottom + 2) + "px";
-        dropdown.style.left = rect.left + "px";
-        dropdown.style.width = rect.width + "px";
+        const dropW = Math.max(rect.width, 420);
+        const maxLeft = window.innerWidth - dropW - 8;
+        dropdown.style.top   = (rect.bottom + 2) + "px";
+        dropdown.style.left  = Math.min(rect.left, maxLeft) + "px";
+        dropdown.style.width = dropW + "px";
       };
 
       const renderDropdown = () => {
