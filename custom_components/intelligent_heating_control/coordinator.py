@@ -1733,35 +1733,49 @@ class IHCCoordinator(DataUpdateCoordinator):
         room: dict,
         room_temp: Optional[float],
         trv_data: dict,
+        trv_mode: bool = False,
     ) -> tuple[Optional[float], Optional[float]]:
         """Return (blended_temp, raw_trv_temp) for a room.
 
-        If trv_temp_weight == 0 or no TRV temp available: return room_temp unchanged.
-        If no room sensor but TRV temp available: use corrected TRV as fallback.
-        Otherwise: weighted average with TRV offset applied first.
+        Priority chain:
+          1. If no TRV temp available → return room_temp as-is (unchanged).
+          2. If no room sensor but TRV temp available → use corrected TRV as primary.
+          3. If explicit trv_temp_weight > 0 → weighted blend (user-configured).
+          4. If trv_mode=True and weight == 0 (not explicitly configured) → auto-blend
+             TRV temp at 30 % even when room sensor is present. The TRV sensor sits
+             directly on the radiator and reacts faster than a wall-mounted sensor,
+             so mixing it in improves demand responsiveness without losing comfort
+             accuracy.
+          5. Otherwise (switch mode, weight == 0) → room sensor only, TRV as fallback.
         """
         trv_avg = trv_data.get("trv_avg_temp")
         weight = float(room.get(CONF_TRV_TEMP_WEIGHT, DEFAULT_TRV_TEMP_WEIGHT))
         offset = float(room.get(CONF_TRV_TEMP_OFFSET, DEFAULT_TRV_TEMP_OFFSET))
 
         if trv_avg is None:
-            return room_temp, None  # no TRV data available
+            return room_temp, None  # no TRV temp available at all
 
         corrected_trv = trv_avg + offset  # compensate for proximity to radiator
 
-        if weight <= 0.0:
-            # Blending disabled – use TRV only as fallback when no room sensor
-            if room_temp is None:
-                return round(corrected_trv, 1), trv_avg
-            return room_temp, trv_avg
-
         if room_temp is None:
-            # Only TRV available
+            # No room sensor – TRV temp is the only source regardless of mode
             return round(corrected_trv, 1), trv_avg
 
-        # Weighted blend
-        blended = room_temp * (1.0 - weight) + corrected_trv * weight
-        return round(blended, 1), trv_avg
+        if weight > 0.0:
+            # Explicit blend configured by user
+            blended = room_temp * (1.0 - weight) + corrected_trv * weight
+            return round(blended, 1), trv_avg
+
+        if trv_mode:
+            # TRV mode, no explicit weight: auto-blend at 30 % TRV temperature.
+            # Room sensor stays dominant (comfort accuracy), TRV adds responsiveness.
+            # User can override via CONF_TRV_TEMP_WEIGHT (set > 0 for more TRV influence,
+            # or to any negative-equivalent by leaving at 0 in switch mode to disable).
+            blended = room_temp * 0.70 + corrected_trv * 0.30
+            return round(blended, 1), trv_avg
+
+        # Switch mode, weight == 0: room sensor only, TRV just stored as diagnostic info
+        return room_temp, trv_avg
 
     def _apply_trv_valve_demand(self, demand: float, trv_data: dict, trv_mode: bool = False) -> float:
         """Correct demand based on TRV valve position.
@@ -2543,6 +2557,9 @@ class IHCCoordinator(DataUpdateCoordinator):
         cold_boost = self._get_weather_cold_boost()
         # v1.4 – ETA pre-heat: minutes until someone arrives home
         eta_minutes = self._get_eta_preheat_minutes()
+        # Controller mode – needed inside the room loop for TRV-specific behaviour
+        _loop_ctrl_mode = self.get_config().get(CONF_CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE)
+        _loop_trv_mode = _loop_ctrl_mode == CONTROLLER_MODE_TRV
 
         for room in self.get_rooms():
             room_id = room.get(CONF_ROOM_ID, "")
@@ -2553,9 +2570,17 @@ class IHCCoordinator(DataUpdateCoordinator):
             raw_temp = self._get_sensor_temp(temp_sensor)
             calibrated_temp = self._apply_room_calibration(room, raw_temp)
 
-            # TRV sensor data integration (optional)
+            # TRV sensor data integration
+            # _blend_trv_temp handles all fallback cases gracefully:
+            #   - no TRV entity / unavailable   → room_temp unchanged
+            #   - TRV temp only (no room sensor) → TRV temp as primary
+            #   - both available, switch mode    → room sensor only (TRV stored as diagnostic)
+            #   - both available, TRV mode       → auto 30/70 blend (TRV adds responsiveness)
+            #   - explicit trv_temp_weight > 0   → user-configured blend (any mode)
             trv_data = self._get_trv_data(room)
-            current_temp, trv_raw_temp = self._blend_trv_temp(room, calibrated_temp, trv_data)
+            current_temp, trv_raw_temp = self._blend_trv_temp(
+                room, calibrated_temp, trv_data, trv_mode=_loop_trv_mode
+            )
 
             window_open = self._is_window_open(room, current_temp)
             room_mode = self.get_room_mode(room_id)
@@ -2636,15 +2661,12 @@ class IHCCoordinator(DataUpdateCoordinator):
             # Warmup tracking: update predictive pre-heat data (Roadmap 1.1)
             demand = controller_state["demand"]
 
-            # Correct demand using TRV valve position:
-            # In TRV mode: auto-applied whenever valve data is available – the valve
-            # position reacts instantly and is physically closer to actual heat flow
-            # than a room temperature delta calculation.
-            # In switch mode: only applied when explicitly enabled via CONF_TRV_VALVE_DEMAND.
-            _ctrl_mode = self.get_config().get(CONF_CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE)
-            _trv_mode = _ctrl_mode == CONTROLLER_MODE_TRV
-            if _trv_mode or room.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND):
-                demand = self._apply_trv_valve_demand(demand, trv_data, trv_mode=_trv_mode)
+            # Correct demand using TRV valve position (optional, graceful fallback).
+            # In TRV mode: auto-applied when valve data is available (trv_avg_valve != None).
+            #   If TRV does not report valve position → returns demand unchanged (no effect).
+            # In switch mode: only applied when CONF_TRV_VALVE_DEMAND explicitly enabled.
+            if _loop_trv_mode or room.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND):
+                demand = self._apply_trv_valve_demand(demand, trv_data, trv_mode=_loop_trv_mode)
 
             self._update_warmup_tracking(
                 room_id,
