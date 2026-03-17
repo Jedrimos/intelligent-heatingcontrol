@@ -1709,6 +1709,13 @@ class IHCPanel extends HTMLElement {
       `<div style="font-size:9px;text-align:center;color:var(--secondary-text-color);width:${100/24}%;min-width:0">${h % 3 === 0 ? h + "h" : ""}</div>`
     ).join("");
 
+    const haGrids = Object.entries(haBlocks)
+      .filter(([eid]) => !yamlEntityIds.has(eid))
+      .map(([eid, blocks]) => {
+        const cfg = haSchedsCfg.find(s => s.entity === eid) || {};
+        return { entityId: eid, mode: cfg.mode || "comfort", grid: buildGrid(blocks, true) };
+      });
+    
     const rows = DAY_KEYS.map((dayKey, di) => {
       const cells = HOURS.map((_, h) => {
         const val         = ihcGrid[di][h];
@@ -1741,13 +1748,6 @@ class IHCPanel extends HTMLElement {
       sleep:   { label: "Schlaf",  color: "rgba(33,150,243,0.35)" },
       away:    { label: "Abwesend",color: "rgba(158,158,158,0.35)"},
     };
-    const haBlocks    = room.ha_schedule_blocks || {};
-    const haSchedsCfg = room.ha_schedules || [];
-    const yamlEntityIds = new Set(
-      Object.entries(haBlocks)
-        .filter(([, blocks]) => Array.isArray(blocks) && blocks.some(b => b._yaml_defined))
-        .map(([eid]) => eid)
-    );
     const haGrids = Object.entries(haBlocks)
       .filter(([eid]) => !yamlEntityIds.has(eid))
       .map(([eid, blocks]) => {
