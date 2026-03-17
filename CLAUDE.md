@@ -11,7 +11,7 @@
 die eine intelligente, raumbasierte Heizungssteuerung realisiert.
 
 - **Domain:** `intelligent_heating_control`
-- **Version:** `1.0.1a1`
+- **Version:** `1.2.0b1`
 - **Repository:** https://github.com/Jedrimos/intelligent-heatingcontroll
 - **Aktiver Entwicklungs-Branch:** `claude/review-homeassistant-repo-PL7tn`
 - **Dateipfad:** `/home/user/intelligent-heatingcontrol/`
