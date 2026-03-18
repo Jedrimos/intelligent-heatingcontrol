@@ -1708,13 +1708,6 @@ class IHCPanel extends HTMLElement {
     const cols = HOURS.map((_, h) =>
       `<div style="font-size:9px;text-align:center;color:var(--secondary-text-color);width:${100/24}%;min-width:0">${h % 3 === 0 ? h + "h" : ""}</div>`
     ).join("");
-
-    const haGrids = Object.entries(haBlocks)
-      .filter(([eid]) => !yamlEntityIds.has(eid))
-      .map(([eid, blocks]) => {
-        const cfg = haSchedsCfg.find(s => s.entity === eid) || {};
-        return { entityId: eid, mode: cfg.mode || "comfort", grid: buildGrid(blocks, true) };
-      });
     
     const rows = DAY_KEYS.map((dayKey, di) => {
       const cells = HOURS.map((_, h) => {
@@ -1755,6 +1748,13 @@ class IHCPanel extends HTMLElement {
         return { entityId: eid, mode: cfg.mode || "comfort", grid: buildGrid(blocks, true) };
       });
 
+    const haGrids = Object.entries(haBlocks)
+      .filter(([eid]) => !yamlEntityIds.has(eid))
+      .map(([eid, blocks]) => {
+        const cfg = haSchedsCfg.find(s => s.entity === eid) || {};
+        return { entityId: eid, mode: cfg.mode || "comfort", grid: buildGrid(blocks, true) };
+      });
+    
     // IHC schedule group legend (shows name + condition status)
     const schedLegend = allScheds.length > 0 ? `
       <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--divider-color)">
