@@ -31,15 +31,20 @@ async def async_setup_entry(
     for room in rooms:
         room_id = room.get(CONF_ROOM_ID)
         room_name = room.get(CONF_ROOM_NAME, room_id)
-        if room_id:
+        if not room_id:
+            continue
+        has_humidity = bool(room.get("humidity_sensor"))
+        has_co2      = bool(room.get("co2_sensor"))
+        # Ventilation advice binary sensor: only useful when actual sensor data exists
+        if has_humidity or has_co2:
             entities.append(
                 IHCVentilationAdviceSensor(coordinator, entry, room_id, room_name)
             )
-            # Only add CO2 sensor if a CO2 sensor entity is configured for this room
-            if room.get("co2_sensor"):
-                entities.append(
-                    IHCCO2WarningSensor(coordinator, entry, room_id, room_name)
-                )
+        # CO2 warning: only when CO2 sensor is configured
+        if has_co2:
+            entities.append(
+                IHCCO2WarningSensor(coordinator, entry, room_id, room_name)
+            )
     async_add_entities(entities, True)
 
 

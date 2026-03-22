@@ -165,15 +165,6 @@ class ComfortManagerMixin:
                 score += 1
                 reasons.append(f"Luftfeuchtigkeit {mold['humidity']}%")
 
-        # ── Temperature delta indoor vs outdoor ─────────────────────────
-        if current_temp is not None and outdoor_temp is not None:
-            delta = current_temp - outdoor_temp
-            if delta >= 6:
-                score += 2
-                reasons.append(f"Temperaturunterschied {delta:.1f}°C")
-            elif delta >= 3:
-                score += 1
-
         # ── Outdoor conditions (negative factors) ───────────────────────
         BAD_CONDITIONS = {"rainy", "pouring", "fog", "hail", "snowy", "snowy-rainy"}
         if weather_condition in BAD_CONDITIONS:
@@ -196,8 +187,10 @@ class ComfortManagerMixin:
             score += 1
             reasons.append("Hoher Strompreis – jetzt lüften spart Energie")
 
-        # ── Skip if nothing meaningful ───────────────────────────────────
-        if co2 is None and mold is None and current_temp is None:
+        # ── Skip if no sensor data at all ───────────────────────────────
+        # Ventilation advice only makes sense when there is actual sensor evidence.
+        # Without CO2 or humidity data there is nothing to recommend ventilation for.
+        if co2 is None and mold is None:
             return None
 
         if score >= 4:

@@ -76,6 +76,8 @@ async def async_setup_entry(
         entities.append(IHCRoomDemandSensor(coordinator, entry, room))
         entities.append(IHCRoomTargetTempSensor(coordinator, entry, room))
         entities.append(IHCRoomRuntimeSensor(coordinator, entry, room))
+        if room.get("humidity_sensor"):
+            entities.append(IHCRoomHumiditySensor(coordinator, entry, room))
     async_add_entities(entities, update_before_add=True)
 
 
@@ -461,3 +463,43 @@ class IHCRoomRuntimeSensor(_IHCBase, SensorEntity):
             if room:
                 return room.get("runtime_today_minutes", 0.0)
         return None
+
+
+class IHCRoomHumiditySensor(_IHCBase, SensorEntity):
+    """Room humidity level in % – based on the configured humidity_sensor."""
+
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_icon = "mdi:water-percent"
+
+    def __init__(self, coordinator: IHCCoordinator, entry: ConfigEntry, room: dict) -> None:
+        super().__init__(coordinator, entry)
+        self._room_id = room[CONF_ROOM_ID]
+        self._room_name = room.get(CONF_ROOM_NAME, self._room_id)
+        self._attr_unique_id = f"{entry.entry_id}_room_{self._room_id}_humidity"
+        self._attr_name = f"IHC {self._room_name} Luftfeuchtigkeit"
+
+    @property
+    def native_value(self) -> Optional[float]:
+        if self.coordinator.data:
+            room = self.coordinator.data.get("rooms", {}).get(self._room_id)
+            if room:
+                mold = room.get("mold")
+                if mold and mold.get("humidity") is not None:
+                    return round(float(mold["humidity"]), 1)
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if self.coordinator.data:
+            room = self.coordinator.data.get("rooms", {}).get(self._room_id)
+            if room:
+                mold = room.get("mold") or {}
+                return {
+                    "dew_point": mold.get("dew_point"),
+                    "mold_risk": mold.get("risk", False),
+                    "threshold": mold.get("threshold"),
+                    "room_id": self._room_id,
+                }
+        return {}
