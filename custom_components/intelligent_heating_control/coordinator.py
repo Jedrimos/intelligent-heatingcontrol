@@ -1029,12 +1029,11 @@ class IHCCoordinator(
             if _loop_trv_mode or room.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND):
                 demand = self._apply_trv_valve_demand(demand, trv_data, trv_mode=_loop_trv_mode)
 
-            # Safety gate: if room sensor shows temp at or above target, the room is
-            # warm enough → force demand to 0 regardless of TRV valve position.
-            # Note: deadband applies on the LOWER side (don't reheat until temp drops
-            # to target - deadband), but the UPPER gate is simply target_temp itself.
-            # This prevents valve-position blending from showing demand when IST >= SOLL.
-            if current_temp is not None and current_temp >= target_temp:
+            # Safety gate: if room sensor is within deadband (current >= target - deadband),
+            # the room is comfortable enough → force demand to 0 regardless of TRV valve
+            # position. This matches the new demand formula which returns 0 within the
+            # deadband zone, preventing TRV valve-position blending from inflating demand.
+            if current_temp is not None and current_temp >= (target_temp - deadband):
                 demand = 0.0
             # Sync the post-gate demand back to the controller so that get_total_demand()
             # and get_rooms_demanding() use the correct (gated) value, not the stale
