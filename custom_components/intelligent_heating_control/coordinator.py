@@ -1533,10 +1533,10 @@ class IHCCoordinator(DataUpdateCoordinator):
                 continue
             try:
                 eta_dt = datetime.fromisoformat(str(eta_attr).replace("Z", "+00:00"))
-                # Normalise to naive local time for comparison
+                # Normalise to naive local time for comparison (consistent with datetime.now() usage)
                 if eta_dt.tzinfo is not None:
-                    eta_dt = eta_dt.astimezone(timezone.utc).replace(tzinfo=None)
-                minutes = (eta_dt - datetime.utcnow()).total_seconds() / 60
+                    eta_dt = eta_dt.astimezone().replace(tzinfo=None)
+                minutes = (eta_dt - datetime.now()).total_seconds() / 60
                 if 0 < minutes <= 120:
                     min_minutes = min(min_minutes or minutes, minutes)
             except (ValueError, TypeError, AttributeError):
