@@ -16,6 +16,17 @@ from .const import (
 )
 from .coordinator import IHCCoordinator
 
+
+def _room_device_info(entry_id: str, room_id: str, room_name: str) -> dict:
+    """Return per-room device info linked to the hub device."""
+    return {
+        "identifiers": {(DOMAIN, f"{entry_id}_{room_id}")},
+        "name": f"IHC {room_name}",
+        "manufacturer": "IHC",
+        "model": "Zimmer",
+        "via_device": (DOMAIN, entry_id),
+    }
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -31,15 +42,20 @@ async def async_setup_entry(
     for room in rooms:
         room_id = room.get(CONF_ROOM_ID)
         room_name = room.get(CONF_ROOM_NAME, room_id)
-        if room_id:
+        if not room_id:
+            continue
+        has_humidity = bool(room.get("humidity_sensor"))
+        has_co2      = bool(room.get("co2_sensor"))
+        # Ventilation advice binary sensor: only useful when actual sensor data exists
+        if has_humidity or has_co2:
             entities.append(
                 IHCVentilationAdviceSensor(coordinator, entry, room_id, room_name)
             )
-            # Only add CO2 sensor if a CO2 sensor entity is configured for this room
-            if room.get("co2_sensor"):
-                entities.append(
-                    IHCCO2WarningSensor(coordinator, entry, room_id, room_name)
-                )
+        # CO2 warning: only when CO2 sensor is configured
+        if has_co2:
+            entities.append(
+                IHCCO2WarningSensor(coordinator, entry, room_id, room_name)
+            )
     async_add_entities(entities, True)
 
 
@@ -58,8 +74,13 @@ class IHCVentilationAdviceSensor(CoordinatorEntity, BinarySensorEntity):
         super().__init__(coordinator)
         self._room_id = room_id
         self._room_name = room_name
+        self._entry_id = entry.entry_id
         self._attr_name = f"IHC {room_name} Lüftungsempfehlung"
         self._attr_unique_id = f"{entry.entry_id}_{room_id}_ventilation_advice"
+
+    @property
+    def device_info(self):
+        return _room_device_info(self._entry_id, self._room_id, self._room_name)
 
     @property
     def is_on(self) -> bool | None:
@@ -109,6 +130,10 @@ class IHCCO2WarningSensor(CoordinatorEntity, BinarySensorEntity):
         self._entry = entry
         self._attr_name = f"IHC {room_name} CO2-Warnung"
         self._attr_unique_id = f"{entry.entry_id}_{room_id}_co2_warning"
+
+    @property
+    def device_info(self):
+        return _room_device_info(self._entry.entry_id, self._room_id, self._room_name)
 
     @property
     def is_on(self) -> bool | None:
