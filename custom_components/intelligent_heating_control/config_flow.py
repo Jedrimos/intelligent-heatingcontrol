@@ -685,7 +685,7 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
                 CONF_RADIATOR_KW: float(user_input.get(CONF_RADIATOR_KW, DEFAULT_RADIATOR_KW)),
                 CONF_HKV_SENSOR: user_input.get(CONF_HKV_SENSOR, ""),
                 CONF_HKV_FACTOR: float(user_input.get(CONF_HKV_FACTOR, DEFAULT_HKV_FACTOR)),
-                CONF_BOOST_TEMP: user_input.get(CONF_BOOST_TEMP),
+                CONF_BOOST_TEMP: float(user_input[CONF_BOOST_TEMP]) if user_input.get(CONF_BOOST_TEMP) not in (None, "") else None,
                 CONF_BOOST_DEFAULT_DURATION: int(user_input.get(CONF_BOOST_DEFAULT_DURATION, DEFAULT_BOOST_DEFAULT_DURATION)),
                 CONF_ROOM_PRESENCE_ENTITIES: [],
                 CONF_TRV_TEMP_WEIGHT: float(user_input.get(CONF_TRV_TEMP_WEIGHT, DEFAULT_TRV_TEMP_WEIGHT)),
@@ -693,6 +693,7 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
                 CONF_TRV_VALVE_DEMAND: bool(user_input.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND)),
                 CONF_TRV_MIN_SEND_INTERVAL: int(user_input.get(CONF_TRV_MIN_SEND_INTERVAL, DEFAULT_TRV_MIN_SEND_INTERVAL)),
                 CONF_SCHEDULES: [],
+                CONF_HA_SCHEDULES: [],
             }
             rooms = list(self._options.get(CONF_ROOMS, []))
             rooms.append(new_room)

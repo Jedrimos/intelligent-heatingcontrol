@@ -1533,10 +1533,10 @@ class IHCCoordinator(DataUpdateCoordinator):
                 continue
             try:
                 eta_dt = datetime.fromisoformat(str(eta_attr).replace("Z", "+00:00"))
-                # Normalise to naive local time for comparison
+                # Normalise to naive local time for comparison (consistent with datetime.now() usage)
                 if eta_dt.tzinfo is not None:
-                    eta_dt = eta_dt.astimezone(timezone.utc).replace(tzinfo=None)
-                minutes = (eta_dt - datetime.utcnow()).total_seconds() / 60
+                    eta_dt = eta_dt.astimezone().replace(tzinfo=None)
+                minutes = (eta_dt - datetime.now()).total_seconds() / 60
                 if 0 < minutes <= 120:
                     min_minutes = min(min_minutes or minutes, minutes)
             except (ValueError, TypeError, AttributeError):
@@ -2787,6 +2787,11 @@ class IHCCoordinator(DataUpdateCoordinator):
             # This prevents valve-position blending from showing demand when IST >= SOLL.
             if current_temp is not None and current_temp >= target_temp:
                 demand = 0.0
+            # Sync the post-gate demand back to the controller so that get_total_demand()
+            # and get_rooms_demanding() use the correct (gated) value, not the stale
+            # pre-gate TRV-blended value. Without this, total demand would appear inflated
+            # (e.g. "41.7% total demand, 3 rooms demanding" despite all rooms showing 0%).
+            self._controller.override_demand(room_id, demand)
 
             self._update_warmup_tracking(
                 room_id,
@@ -3056,19 +3061,27 @@ class IHCCoordinator(DataUpdateCoordinator):
                 )
                 return []
             if not entry.config_entry_id:
-                # Fallback: some HA versions/setups don't populate config_entry_id in the
-                # entity registry even for UI-created schedule helpers.
-                # Search all schedule config entries and match by associated entity_id.
+                # Fallback 1: HA schedule helpers created via UI use their config_entry.entry_id
+                # as the entity's unique_id – try a direct lookup with the unique_id.
                 config_entry = None
-                for ce in self.hass.config_entries.async_entries("schedule"):
-                    associated = er.async_entries_for_config_entry(registry, ce.entry_id)
-                    if any(ae.entity_id == entity_id for ae in associated):
-                        config_entry = ce
+                if entry.unique_id:
+                    config_entry = self.hass.config_entries.async_get_entry(entry.unique_id)
+                    if config_entry:
                         _LOGGER.debug(
-                            "IHC: Fallback – '%s' config entry gefunden via Schedule-Suche: %s",
-                            entity_id, ce.entry_id,
+                            "IHC: Fallback 1 – '%s' config entry via unique_id gefunden: %s",
+                            entity_id, config_entry.entry_id,
                         )
-                        break
+                # Fallback 2: search all schedule config entries by associated entities
+                if config_entry is None:
+                    for ce in self.hass.config_entries.async_entries("schedule"):
+                        associated = er.async_entries_for_config_entry(registry, ce.entry_id)
+                        if any(ae.entity_id == entity_id for ae in associated):
+                            config_entry = ce
+                            _LOGGER.debug(
+                                "IHC: Fallback 2 – '%s' config entry via Schedule-Suche: %s",
+                                entity_id, ce.entry_id,
+                            )
+                            break
                 if config_entry is None:
                     # YAML-defined schedule helpers have no config entry.
                     # The schedule state ("on"/"off") still works for heating decisions –
@@ -3077,10 +3090,10 @@ class IHCCoordinator(DataUpdateCoordinator):
                     if entity_id not in self._yaml_schedule_warned:
                         self._yaml_schedule_warned.add(entity_id)
                         _LOGGER.warning(
-                            "IHC: HA-Zeitplan '%s' wurde via YAML definiert (keine config_entry_id). "
-                            "Heizsteuerung funktioniert normal – Kalenderanzeige im Frontend "
-                            "ist für YAML-Helfer nicht verfügbar. Zur vollen Unterstützung "
-                            "den Helfer über HA-Einstellungen → Helfer neu erstellen.", entity_id
+                            "IHC: HA-Zeitplan '%s': Config-Entry nicht gefunden. "
+                            "Heizsteuerung funktioniert normal über Entity-State. "
+                            "Kalenderanzeige nicht verfügbar (nur für UI-erstellte Helfer). "
+                            "Falls via HA-UI erstellt: Integration einmal neu laden.", entity_id
                         )
                     return [{"_yaml_defined": True}]
             else:
