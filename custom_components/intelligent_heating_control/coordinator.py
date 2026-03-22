@@ -2787,6 +2787,11 @@ class IHCCoordinator(DataUpdateCoordinator):
             # This prevents valve-position blending from showing demand when IST >= SOLL.
             if current_temp is not None and current_temp >= target_temp:
                 demand = 0.0
+            # Sync the post-gate demand back to the controller so that get_total_demand()
+            # and get_rooms_demanding() use the correct (gated) value, not the stale
+            # pre-gate TRV-blended value. Without this, total demand would appear inflated
+            # (e.g. "41.7% total demand, 3 rooms demanding" despite all rooms showing 0%).
+            self._controller.override_demand(room_id, demand)
 
             self._update_warmup_tracking(
                 room_id,

@@ -179,6 +179,15 @@ class HeatingController:
             if s["demand"] > 0 and s["room_mode"] != ROOM_MODE_OFF
         )
 
+    def override_demand(self, room_id: str, demand: float) -> None:
+        """Override the stored demand for a room after post-processing (e.g. safety gate).
+
+        This keeps get_total_demand() and get_rooms_demanding() in sync with the
+        actual demand values stored in room_data by the coordinator.
+        """
+        if room_id in self._room_states:
+            self._room_states[room_id]["demand"] = demand
+
     # ------------------------------------------------------------------
     # Central on/off decision
     # ------------------------------------------------------------------
