@@ -154,8 +154,7 @@ from .const import (
     DEFAULT_WEATHER_COLD_THRESHOLD,
     CONF_WEATHER_COLD_BOOST,
     DEFAULT_WEATHER_COLD_BOOST,
-    CONF_STARTUP_GRACE_SECONDS,
-    DEFAULT_STARTUP_GRACE_SECONDS,
+
     CONF_HA_SCHEDULES,
     CONF_ECO_OFFSET,
     CONF_SLEEP_OFFSET,
@@ -354,11 +353,6 @@ class IHCCoordinator(
         # before the manual-override detector runs (prevents false "manual override" alerts)
         self._startup_cycles_remaining: int = 1
 
-        # Startup grace period for Zigbee/Z-Wave sensors that report unknown/unavailable
-        # right after HA restart.  During this window, unknown window sensors are treated
-        # as "open" (safe/conservative) to avoid heating with open windows.
-        # Value is set on first _async_update_data call from global config.
-        self._startup_grace_until: float = time.monotonic() + DEFAULT_STARTUP_GRACE_SECONDS
 
         # Manual TRV override detection: track last IHC-set temperature per room
         self._last_ihc_set_temps: Dict[str, float] = {}  # room_id → last temp IHC intentionally set
@@ -841,9 +835,6 @@ class IHCCoordinator(
         if self._startup_cycles_remaining > 0:
             self._startup_cycles_remaining -= 1
             # Apply configurable grace duration from global config (first cycle only)
-            cfg = self.config_entry.options or self.config_entry.data
-            grace_secs = int(cfg.get(CONF_STARTUP_GRACE_SECONDS, DEFAULT_STARTUP_GRACE_SECONDS))
-            self._startup_grace_until = time.monotonic() + grace_secs
             self._prefill_window_states()
             self._prefill_last_sent_temps()
             self._setup_window_listeners()

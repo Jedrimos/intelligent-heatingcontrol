@@ -295,6 +295,7 @@ ATTR_SYSTEM_MODE: Final = "system_mode"
 CONF_CONTROLLER_MODE: Final = "controller_mode"
 CONTROLLER_MODE_SWITCH: Final = "switch"   # control a boiler switch (default)
 CONTROLLER_MODE_TRV: Final = "trv"         # control TRVs directly (close them when no demand)
+CONTROLLER_MODE_HG: Final = "hg"           # Heat Generator mode – Roadmap 3.0 (WIP)
 DEFAULT_CONTROLLER_MODE: Final = CONTROLLER_MODE_SWITCH
 
 # Boost-Modus (per room)
