@@ -173,8 +173,8 @@ _callService("reload",                 {})
 | `CONF_ENERGY_PRICE_ENTITY` | str | – | Dynamischer Strompreissensor |
 | `CONF_ENERGY_PRICE_THRESHOLD` | float | 0.30 | Teuer-Schwelle €/kWh |
 | `CONF_ENERGY_PRICE_ECO_OFFSET` | float | 2.0 | Eco-Abzug bei hohem Preis °C |
-| `CONF_FLOW_TEMP_ENTITY` | str | – | Vorlauftemperatur number entity |
-| `CONF_FLOW_TEMP_SENSOR` | str | – | Vorlauftemperatursensor |
+| `CONF_FLOW_TEMP_ENTITY` | str | – | Vorlauftemperatur **number entity** (Schreiben: PID schickt Sollwert hierher, z.B. `number.heizung_vorlauf`) |
+| `CONF_FLOW_TEMP_SENSOR` | str | – | Vorlauftemperatur **sensor entity** (Lesen: aktueller IST-Wert, z.B. `sensor.vorlauftemperatur`) |
 | `CONF_VACATION_START` | str | – | Urlaubsstart ISO-Datum |
 | `CONF_VACATION_END` | str | – | Urlaubsende ISO-Datum |
 | `CONF_VACATION_CALENDAR` | str | – | Kalender-Entität für Urlaub |
