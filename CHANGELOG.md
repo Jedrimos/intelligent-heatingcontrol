@@ -15,7 +15,7 @@ und dieses Projekt folgt [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ---
 
-## [1.3.0] - 2026-03-22
+## [1.3.0] - 2026-03-23
 
 ### Hinzugefügt
 
@@ -51,6 +51,10 @@ und dieses Projekt folgt [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Gefixt
 
+#### Lüftungsempfehlungssensor – AttributeError bei fehlendem Sensor
+- **Bug:** `binary_sensor.ihc_*_lueftungsempfehlung` warf einen `AttributeError` wenn kein CO₂- oder Feuchtigkeitssensor Daten lieferte. Ursache: `room.get("ventilation", {})` gibt `None` zurück wenn der Key explizit auf `None` steht — der Default `{}` greift nur bei fehlendem Key.
+- **Fix:** `or {}` statt Default-Argument in allen Sensor-Properties.
+
 #### Lüftungsempfehlung – falsche Dauerwarnung
 - **Bug:** Die Lüftungsempfehlung wertete `Innentemperatur − Außentemperatur` aus.
   In der Heizperiode ist diese Differenz immer 10–20 °C → dauerhaft „Lüften empfohlen" ohne jeden Sensor.
@@ -59,6 +63,14 @@ und dieses Projekt folgt [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 #### Lüftungsempfehlung – Ghost-Entitäten für sensorlose Zimmer
 - **Bug:** `binary_sensor.ihc_*_lueftungsempfehlung` wurde für alle Zimmer erstellt, auch ohne Feuchte- oder CO₂-Sensor.
 - **Fix:** Entität wird nur noch erstellt wenn `humidity_sensor` ODER `co2_sensor` konfiguriert ist.
+
+#### icon.png – falsche Größe im Repository-Root
+- **Bug:** `icon.png` im Repository-Root war 359×354 px — HACS zeigt das Bild in der Store-Übersicht nicht an wenn es nicht exakt 256×256 px ist.
+- **Fix:** Root- und `images/`-Kopie auf 256×256 px skaliert (identisch mit der bereits korrekten Version in `custom_components/`).
+
+#### Browser-Cache – altes Frontend nach Update
+- **Bug:** HA-Panel lädt `ihc-panel.js` ohne Versions-Parameter → Browser cacht die alte Datei auch nach einem IHC-Update.
+- **Fix:** JS-URL enthält jetzt `?v=1.3.0`; bei zukünftigen Releases muss der Parameter entsprechend erhöht werden.
 
 ---
 
