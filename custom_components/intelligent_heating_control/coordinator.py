@@ -3056,19 +3056,27 @@ class IHCCoordinator(DataUpdateCoordinator):
                 )
                 return []
             if not entry.config_entry_id:
-                # Fallback: some HA versions/setups don't populate config_entry_id in the
-                # entity registry even for UI-created schedule helpers.
-                # Search all schedule config entries and match by associated entity_id.
+                # Fallback 1: HA schedule helpers created via UI use their config_entry.entry_id
+                # as the entity's unique_id – try a direct lookup with the unique_id.
                 config_entry = None
-                for ce in self.hass.config_entries.async_entries("schedule"):
-                    associated = er.async_entries_for_config_entry(registry, ce.entry_id)
-                    if any(ae.entity_id == entity_id for ae in associated):
-                        config_entry = ce
+                if entry.unique_id:
+                    config_entry = self.hass.config_entries.async_get_entry(entry.unique_id)
+                    if config_entry:
                         _LOGGER.debug(
-                            "IHC: Fallback – '%s' config entry gefunden via Schedule-Suche: %s",
-                            entity_id, ce.entry_id,
+                            "IHC: Fallback 1 – '%s' config entry via unique_id gefunden: %s",
+                            entity_id, config_entry.entry_id,
                         )
-                        break
+                # Fallback 2: search all schedule config entries by associated entities
+                if config_entry is None:
+                    for ce in self.hass.config_entries.async_entries("schedule"):
+                        associated = er.async_entries_for_config_entry(registry, ce.entry_id)
+                        if any(ae.entity_id == entity_id for ae in associated):
+                            config_entry = ce
+                            _LOGGER.debug(
+                                "IHC: Fallback 2 – '%s' config entry via Schedule-Suche: %s",
+                                entity_id, ce.entry_id,
+                            )
+                            break
                 if config_entry is None:
                     # YAML-defined schedule helpers have no config entry.
                     # The schedule state ("on"/"off") still works for heating decisions –
@@ -3077,10 +3085,10 @@ class IHCCoordinator(DataUpdateCoordinator):
                     if entity_id not in self._yaml_schedule_warned:
                         self._yaml_schedule_warned.add(entity_id)
                         _LOGGER.warning(
-                            "IHC: HA-Zeitplan '%s' wurde via YAML definiert (keine config_entry_id). "
-                            "Heizsteuerung funktioniert normal – Kalenderanzeige im Frontend "
-                            "ist für YAML-Helfer nicht verfügbar. Zur vollen Unterstützung "
-                            "den Helfer über HA-Einstellungen → Helfer neu erstellen.", entity_id
+                            "IHC: HA-Zeitplan '%s': Config-Entry nicht gefunden. "
+                            "Heizsteuerung funktioniert normal über Entity-State. "
+                            "Kalenderanzeige nicht verfügbar (nur für UI-erstellte Helfer). "
+                            "Falls via HA-UI erstellt: Integration einmal neu laden.", entity_id
                         )
                     return [{"_yaml_defined": True}]
             else:
