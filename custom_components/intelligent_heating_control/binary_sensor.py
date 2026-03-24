@@ -85,15 +85,15 @@ class IHCVentilationAdviceSensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         data = self.coordinator.data or {}
-        room = data.get(self._room_id, {})
+        room = data.get("rooms", {}).get(self._room_id, {})
         ventilation = room.get("ventilation") or {}
         level = ventilation.get("level", "none")
-        return level in ("urgent", "recommended")
+        return level in ("urgent", "recommended", "possible")
 
     @property
     def extra_state_attributes(self) -> dict:
         data = self.coordinator.data or {}
-        room = data.get(self._room_id, {})
+        room = data.get("rooms", {}).get(self._room_id, {})
         ventilation = room.get("ventilation") or {}
         return {
             "level": ventilation.get("level", "none"),
@@ -138,7 +138,7 @@ class IHCCO2WarningSensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         data = self.coordinator.data or {}
-        room = data.get(self._room_id, {})
+        room = data.get("rooms", {}).get(self._room_id, {})
         ventilation = room.get("ventilation") or {}
         co2 = ventilation.get("co2_ppm")
         if co2 is None:
@@ -153,7 +153,7 @@ class IHCCO2WarningSensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         data = self.coordinator.data or {}
-        room = data.get(self._room_id, {})
+        room = data.get("rooms", {}).get(self._room_id, {})
         ventilation = room.get("ventilation") or {}
         rooms = self.coordinator.get_rooms()
         room_cfg = next(
