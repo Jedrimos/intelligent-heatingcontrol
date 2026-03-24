@@ -82,7 +82,7 @@ from .coordinator import IHCCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Map HA preset names to our room modes
+# Map HA preset names to our room modes (permanent modes only)
 PRESET_TO_MODE = {
     "Auto": ROOM_MODE_AUTO,
     "Comfort": ROOM_MODE_COMFORT,
@@ -90,10 +90,10 @@ PRESET_TO_MODE = {
     "Sleep": ROOM_MODE_SLEEP,
     "Away": ROOM_MODE_AWAY,
     "Manual": ROOM_MODE_MANUAL,
-    "Boost": ROOM_MODE_COMFORT,  # Boost uses comfort mode temperature as fallback
 }
 MODE_TO_PRESET = {v: k for k, v in PRESET_TO_MODE.items()}
-# "Boost" is a special runtime preset – not a permanent room mode mapping
+# "Boost" is a runtime-only preset – handled separately in preset_mode/async_set_preset_mode.
+# It must NOT be in PRESET_TO_MODE to avoid MODE_TO_PRESET overwriting "Comfort" → "Boost".
 
 HVAC_MODE_MAP = {
     ROOM_MODE_OFF: HVACMode.OFF,
@@ -117,7 +117,7 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
-    _attr_preset_modes = list(PRESET_TO_MODE.keys())
+    _attr_preset_modes = list(PRESET_TO_MODE.keys()) + ["Boost"]
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.PRESET_MODE
