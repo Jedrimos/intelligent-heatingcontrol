@@ -112,6 +112,11 @@
             <input type="number" class="form-input" id="m-comfort" value="21" step="0.5" min="15" max="30">
             <span class="form-hint">Nur wenn kein Außensensor vorhanden</span>
           </div>
+          <div class="settings-item">
+            <label>Abwesend-Temperatur (°C)</label>
+            <input type="number" class="form-input" id="m-away-temp-room" value="16" step="0.5" min="10" max="22">
+            <span class="form-hint">Feste Temperatur wenn Zimmer-Modus auf "Abwesend" steht</span>
+          </div>
         </div>
         <div class="settings-grid" style="margin-top:8px">
           <div class="settings-item">
@@ -277,6 +282,7 @@
         window_sensors:         windows,
         room_offset:            parseFloat(modal.querySelector("#m-offset")?.value) || 0,
         comfort_temp:           parseFloat(modal.querySelector("#m-comfort")?.value) || 21.0,
+        away_temp_room:         parseFloat(modal.querySelector("#m-away-temp-room")?.value) || 16.0,
         eco_offset:             parseFloat(modal.querySelector("#m-eco-offset")?.value) || 3.0,
         eco_max_temp:           parseFloat(modal.querySelector("#m-eco-max")?.value) || 21.0,
         sleep_offset:           parseFloat(modal.querySelector("#m-sleep-offset")?.value) || 4.0,
@@ -397,6 +403,11 @@
             <label>Komfort Fallback (°C)</label>
             <input type="number" class="form-input" id="m-comfort" value="${room.comfort_temp}" step="0.5" min="15" max="30">
             <span class="form-hint">Nur wenn kein Außensensor vorhanden</span>
+          </div>
+          <div class="settings-item">
+            <label>Abwesend-Temperatur (°C)</label>
+            <input type="number" class="form-input" id="m-away-temp-room" value="${room.away_temp_room ?? 16}" step="0.5" min="10" max="22">
+            <span class="form-hint">Feste Temperatur wenn Zimmer-Modus auf "Abwesend" steht</span>
           </div>
         </div>
         <div class="settings-grid" style="margin-top:8px">
@@ -672,6 +683,7 @@
         window_sensor:  windows[0] || "",
         window_sensors: windows,
         comfort_temp:          parseFloat(modal.querySelector("#m-comfort").value),
+        away_temp_room:        parseFloat(modal.querySelector("#m-away-temp-room")?.value) || 16.0,
         eco_offset:            parseFloat(modal.querySelector("#m-eco-offset").value),
         eco_max_temp:          parseFloat(modal.querySelector("#m-eco-max").value),
         sleep_offset:          parseFloat(modal.querySelector("#m-sleep-offset").value),

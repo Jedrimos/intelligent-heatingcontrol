@@ -52,6 +52,8 @@ from .const import (
     CONF_RADIATOR_KW,
     CONF_HKV_SENSOR,
     CONF_HKV_FACTOR,
+    CONF_AWAY_TEMP_ROOM,
+    DEFAULT_AWAY_TEMP_ROOM,
     CONF_BOOST_TEMP,
     CONF_BOOST_DEFAULT_DURATION,
     CONF_TRV_TEMP_WEIGHT,
@@ -189,12 +191,14 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
         if controller_mode == "trv":
             # In TRV mode there is no central heating switch – each TRV heats independently.
             # Show HEATING whenever the room has active demand (> 0) or a TRV reports heating.
-            # heating_active (Klimabaustein) is NOT a valid signal here because the Klimabaustein
-            # is bypassed in TRV mode – using it would always return IDLE, even when rooms heat.
             if demand > 0 or d.get("trv_any_heating", False):
                 return HVACAction.HEATING
         else:
-            if data and demand > 0 and data.get("heating_active"):
+            # Switch mode: show HEATING when the room has demand > 0.
+            # The central heating switch (heating_active) controls the boiler but is a
+            # system-level decision – a room calling for heat should show HEATING even if
+            # the boiler threshold hasn't been reached yet (prevents confusing IDLE display).
+            if demand > 0:
                 return HVACAction.HEATING
             if data and data.get("cooling_active"):
                 return HVACAction.COOLING
@@ -226,6 +230,7 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "window_sensors": room_cfg.get("window_sensors", []),
             # Legacy fixed temps (kept for fallback / sensor-absent scenario)
             "comfort_temp": room_cfg.get("comfort_temp", 21.0),
+            "away_temp_room": room_cfg.get(CONF_AWAY_TEMP_ROOM, DEFAULT_AWAY_TEMP_ROOM),
             # Outdoor-regulated offsets & caps
             "eco_offset": room_cfg.get("eco_offset", 3.0),
             "sleep_offset": room_cfg.get("sleep_offset", 4.0),

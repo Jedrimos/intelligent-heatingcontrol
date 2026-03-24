@@ -88,12 +88,22 @@ from .const import (
     CONF_ROOM_PRESENCE_ENTITIES,
     CONF_BOOST_TEMP,
     CONF_BOOST_DEFAULT_DURATION,
+    CONF_TRV_TEMP_WEIGHT,
+    CONF_TRV_TEMP_OFFSET,
+    CONF_TRV_VALVE_DEMAND,
+    CONF_TRV_MIN_SEND_INTERVAL,
+    CONF_MOLD_HUMIDITY_THRESHOLD,
     DEFAULT_WINDOW_REACTION_TIME,
     DEFAULT_WINDOW_CLOSE_DELAY,
     DEFAULT_ROOM_QM,
     DEFAULT_ABSOLUTE_MIN_TEMP,
     DEFAULT_ROOM_PREHEAT_MINUTES,
     DEFAULT_BOOST_DEFAULT_DURATION,
+    DEFAULT_TRV_TEMP_WEIGHT,
+    DEFAULT_TRV_TEMP_OFFSET,
+    DEFAULT_TRV_VALVE_DEMAND,
+    DEFAULT_TRV_MIN_SEND_INTERVAL,
+    DEFAULT_MOLD_HUMIDITY_THRESHOLD,
 )
 from .coordinator import IHCCoordinator
 
@@ -285,6 +295,11 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
             CONF_ROOM_PRESENCE_ENTITIES: call.data.get(CONF_ROOM_PRESENCE_ENTITIES, []),
             CONF_BOOST_TEMP: float(call.data.get(CONF_BOOST_TEMP)) if call.data.get(CONF_BOOST_TEMP) is not None else None,
             CONF_BOOST_DEFAULT_DURATION: int(call.data.get(CONF_BOOST_DEFAULT_DURATION, DEFAULT_BOOST_DEFAULT_DURATION)),
+            CONF_MOLD_HUMIDITY_THRESHOLD: float(call.data.get(CONF_MOLD_HUMIDITY_THRESHOLD, DEFAULT_MOLD_HUMIDITY_THRESHOLD)),
+            CONF_TRV_TEMP_WEIGHT: float(call.data.get(CONF_TRV_TEMP_WEIGHT, DEFAULT_TRV_TEMP_WEIGHT)),
+            CONF_TRV_TEMP_OFFSET: float(call.data.get(CONF_TRV_TEMP_OFFSET, DEFAULT_TRV_TEMP_OFFSET)),
+            CONF_TRV_VALVE_DEMAND: bool(call.data.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND)),
+            CONF_TRV_MIN_SEND_INTERVAL: int(call.data.get(CONF_TRV_MIN_SEND_INTERVAL, DEFAULT_TRV_MIN_SEND_INTERVAL)),
         }
         await coordinator.async_add_room(room_config)
 
@@ -295,9 +310,40 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
 
     async def handle_update_room(call: ServiceCall) -> None:
         room_id = call.data.get(CONF_ROOM_ID)
-        if room_id:
-            updates = {k: v for k, v in call.data.items() if k != CONF_ROOM_ID}
-            await coordinator.async_update_room(room_id, updates)
+        if not room_id:
+            return
+        raw = {k: v for k, v in call.data.items() if k != CONF_ROOM_ID}
+        # Apply type coercion so coordinator always gets correct types
+        _FLOAT_FIELDS = {
+            CONF_ROOM_OFFSET, CONF_DEADBAND, CONF_WEIGHT, CONF_COMFORT_TEMP,
+            CONF_AWAY_TEMP_ROOM, CONF_ECO_OFFSET, CONF_SLEEP_OFFSET, CONF_AWAY_OFFSET,
+            CONF_ECO_MAX_TEMP, CONF_SLEEP_MAX_TEMP, CONF_AWAY_MAX_TEMP,
+            CONF_MIN_TEMP, CONF_MAX_TEMP, CONF_ABSOLUTE_MIN_TEMP, CONF_ROOM_QM,
+            CONF_RADIATOR_KW, CONF_HKV_FACTOR, CONF_MOLD_HUMIDITY_THRESHOLD,
+            CONF_TRV_TEMP_WEIGHT, CONF_TRV_TEMP_OFFSET,
+        }
+        _INT_FIELDS = {
+            CONF_WINDOW_REACTION_TIME, CONF_WINDOW_CLOSE_DELAY,
+            CONF_ROOM_PREHEAT_MINUTES, CONF_CO2_THRESHOLD_GOOD, CONF_CO2_THRESHOLD_BAD,
+            CONF_BOOST_DEFAULT_DURATION, CONF_TRV_MIN_SEND_INTERVAL,
+        }
+        _BOOL_FIELDS = {CONF_MOLD_PROTECTION_ENABLED, CONF_TRV_VALVE_DEMAND}
+        updates: dict = {}
+        for k, v in raw.items():
+            try:
+                if k in _FLOAT_FIELDS:
+                    updates[k] = float(v)
+                elif k in _INT_FIELDS:
+                    updates[k] = int(float(v))
+                elif k in _BOOL_FIELDS:
+                    updates[k] = bool(v)
+                elif k == CONF_BOOST_TEMP:
+                    updates[k] = float(v) if v not in (None, "") else None
+                else:
+                    updates[k] = v
+            except (TypeError, ValueError):
+                _LOGGER.warning("IHC update_room: invalid value for %s=%r, skipping", k, v)
+        await coordinator.async_update_room(room_id, updates)
 
     async def handle_set_room_mode(call: ServiceCall) -> None:
         room_id = call.data.get(CONF_ROOM_ID)

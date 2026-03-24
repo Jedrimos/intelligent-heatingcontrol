@@ -15,6 +15,8 @@ from .const import (
     CONF_ROOM_OFFSET,
     CONF_DEADBAND,
     CONF_COMFORT_TEMP,
+    CONF_AWAY_TEMP_ROOM,
+    DEFAULT_AWAY_TEMP_ROOM,
     CONF_AWAY_TEMP,
     CONF_VACATION_TEMP,
     CONF_ABSOLUTE_MIN_TEMP,
@@ -235,9 +237,11 @@ class RoomLogicMixin:
 
         # --- 1b. Room-specific presence → away temp (Roadmap 1.2) ---
         if not self._check_room_presence(room) and room_mode == ROOM_MODE_AUTO:
-            return min(max_temp, max(min_temp, away_base + room_offset)), {
+            away_temp_room = float(room.get(CONF_AWAY_TEMP_ROOM, DEFAULT_AWAY_TEMP_ROOM))
+            effective_away = max(away_temp_room, frost_temp)
+            return min(max_temp, max(min_temp, effective_away)), {
                 "source": "room_presence_away", "schedule_active": False,
-                "away_base": away_base,
+                "away_base": effective_away,
             }
 
         # --- 2. Room mode preset overrides ---
@@ -245,8 +249,11 @@ class RoomLogicMixin:
             return min_temp, {"source": "room_off", "schedule_active": False}
 
         if room_mode == ROOM_MODE_AWAY:
-            return min(max_temp, max(min_temp, away_base + room_offset)), {
-                "source": "room_away", "schedule_active": False, "away_base": away_base,
+            # Use per-room fixed away temperature if configured, else offset-based away_base
+            away_temp_room = float(room.get(CONF_AWAY_TEMP_ROOM, DEFAULT_AWAY_TEMP_ROOM))
+            effective_away = max(away_temp_room, frost_temp)
+            return min(max_temp, max(min_temp, effective_away)), {
+                "source": "room_away", "schedule_active": False, "away_base": effective_away,
             }
 
         if room_mode == ROOM_MODE_COMFORT:

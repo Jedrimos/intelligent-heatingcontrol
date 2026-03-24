@@ -54,6 +54,7 @@
         valve_entities: state.attributes.valve_entities || [],
         window_sensors: state.attributes.window_sensors || [],
         comfort_temp: state.attributes.comfort_temp ?? 21,
+        away_temp_room: state.attributes.away_temp_room ?? 16,
         eco_offset: state.attributes.eco_offset ?? 3,
         sleep_offset: state.attributes.sleep_offset ?? 4,
         away_offset: state.attributes.away_offset ?? 6,
