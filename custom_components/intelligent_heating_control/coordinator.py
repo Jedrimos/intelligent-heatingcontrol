@@ -417,6 +417,12 @@ class IHCCoordinator(
             min_rooms_demand=int(opts.get(CONF_MIN_ROOMS_DEMAND, DEFAULT_MIN_ROOMS_DEMAND)),
         )
 
+        # Re-subscribe window sensor listeners whenever config changes so that newly
+        # added sensors are monitored immediately (without needing an HA restart).
+        # _setup_window_listeners() is a no-op when the sensor set hasn't changed.
+        if self.hass is not None:
+            self._setup_window_listeners()
+
     async def async_load_runtime_state(self) -> None:
         """Load persisted runtime state from Store."""
         data = await self._store.async_load()
