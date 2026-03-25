@@ -111,6 +111,25 @@ class IHCPanel extends HTMLElement {
       style.textContent = STYLES;
       shadow.appendChild(style);
     }
+
+    // ── HA Standard Top Bar (sticky, opens sidebar on click) ──────────────
+    if (!shadow.querySelector(".ha-topbar")) {
+      const topbar = document.createElement("div");
+      topbar.className = "ha-topbar";
+      topbar.innerHTML = `
+        <button class="menu-btn" id="ihc-menu-btn" title="Menü öffnen" aria-label="Menü öffnen">
+          <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+        </button>
+        <span class="topbar-title">Intelligent Heating Control</span>
+        <span class="topbar-version">v1.3</span>
+      `;
+      shadow.appendChild(topbar);
+      // Fire the HA sidebar-toggle event (composed: true crosses shadow DOM)
+      topbar.querySelector("#ihc-menu-btn").addEventListener("click", () => {
+        this.dispatchEvent(new CustomEvent("hass-open-menu", { bubbles: true, composed: true }));
+      });
+    }
+
     if (!shadow.querySelector(".panel")) {
       const div = document.createElement("div");
       div.className = "panel";
@@ -121,11 +140,6 @@ class IHCPanel extends HTMLElement {
 
     // Build permanent structure (only once)
     panel.innerHTML = `
-      <div class="header">
-        <span class="header-icon">🌡️</span>
-        <h1>Intelligent Heating Control</h1>
-        <span class="header-version">v4</span>
-      </div>
       <div class="tabs">
         <div class="tab" data-tab="overview">🏠 Dashboard</div>
         <div class="tab" data-tab="rooms">🚪 Zimmer</div>

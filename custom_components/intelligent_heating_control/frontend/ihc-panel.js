@@ -54,24 +54,36 @@ const STYLES = `
   :host { font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif); display: block; }
   * { box-sizing: border-box; }
 
+  /* ── HA Top Bar ───────────────────────────────────────────────────────────── */
+  .ha-topbar {
+    position: sticky; top: 0; z-index: 200;
+    display: flex; align-items: center; gap: 4px;
+    height: 56px; padding: 0 4px 0 0;
+    background: var(--app-header-background-color, var(--primary-color));
+    color: var(--app-header-text-color, #fff);
+    box-shadow: 0 2px 6px rgba(0,0,0,.25);
+  }
+  .ha-topbar .menu-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 48px; height: 48px; flex-shrink: 0;
+    background: none; border: none; cursor: pointer;
+    color: inherit; border-radius: 50%;
+    transition: background 0.15s;
+  }
+  .ha-topbar .menu-btn:hover { background: rgba(255,255,255,.12); }
+  .ha-topbar .menu-btn svg { width: 24px; height: 24px; fill: currentColor; }
+  .ha-topbar .topbar-title {
+    flex: 1; font-size: 20px; font-weight: 400; letter-spacing: 0.005em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ha-topbar .topbar-version {
+    font-size: 10px; opacity: .7; font-weight: 600;
+    border: 1px solid rgba(255,255,255,.4); padding: 2px 7px;
+    border-radius: 10px; flex-shrink: 0; margin-right: 8px;
+  }
+
   /* ── Layout ─────────────────────────────────────────────────────────────── */
   .panel { max-width: 1100px; margin: 0 auto; padding: 16px 16px 32px; }
-
-  /* ── Header ──────────────────────────────────────────────────────────────── */
-  .header {
-    display: flex; align-items: center; gap: 10px; margin-bottom: 0;
-    padding: 14px 0 12px;
-  }
-  .header-icon { font-size: 22px; flex-shrink: 0; }
-  .header h1 {
-    margin: 0; font-size: 17px; font-weight: 700;
-    color: var(--primary-text-color); flex: 1; letter-spacing: -0.2px;
-  }
-  .header-version {
-    font-size: 10px; color: var(--secondary-text-color);
-    background: var(--secondary-background-color, #f5f5f5);
-    padding: 2px 7px; border-radius: 10px; font-weight: 600; flex-shrink: 0;
-  }
 
   /* ── Tabs ─────────────────────────────────────────────────────────────────── */
   .tabs {
@@ -734,6 +746,25 @@ class IHCPanel extends HTMLElement {
       style.textContent = STYLES;
       shadow.appendChild(style);
     }
+
+    // ── HA Standard Top Bar (sticky, opens sidebar on click) ──────────────
+    if (!shadow.querySelector(".ha-topbar")) {
+      const topbar = document.createElement("div");
+      topbar.className = "ha-topbar";
+      topbar.innerHTML = `
+        <button class="menu-btn" id="ihc-menu-btn" title="Menü öffnen" aria-label="Menü öffnen">
+          <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+        </button>
+        <span class="topbar-title">Intelligent Heating Control</span>
+        <span class="topbar-version">v1.3</span>
+      `;
+      shadow.appendChild(topbar);
+      // Fire the HA sidebar-toggle event (composed: true crosses shadow DOM)
+      topbar.querySelector("#ihc-menu-btn").addEventListener("click", () => {
+        this.dispatchEvent(new CustomEvent("hass-open-menu", { bubbles: true, composed: true }));
+      });
+    }
+
     if (!shadow.querySelector(".panel")) {
       const div = document.createElement("div");
       div.className = "panel";
@@ -744,11 +775,6 @@ class IHCPanel extends HTMLElement {
 
     // Build permanent structure (only once)
     panel.innerHTML = `
-      <div class="header">
-        <span class="header-icon">🌡️</span>
-        <h1>Intelligent Heating Control</h1>
-        <span class="header-version">v4</span>
-      </div>
       <div class="tabs">
         <div class="tab" data-tab="overview">🏠 Dashboard</div>
         <div class="tab" data-tab="rooms">🚪 Zimmer</div>
@@ -3112,6 +3138,11 @@ class IHCPanel extends HTMLElement {
                 value="${a.outdoor_temp_sensor ?? ''}" data-ep-domains="sensor" autocomplete="off">
               <span class="form-hint">Wird für die Heizkurve, Sommerautomatik und Kältewarnung benötigt. Empfohlen: Wetterdienst-Sensor oder externer Temperaturfühler.</span>
             </div>
+            <div class="settings-item">
+              <label>Außentemperatur-Glättung (Minuten)</label>
+              <input type="number" class="form-input" id="outdoor-smoothing" min="0" max="60" step="5" value="${a.outdoor_temp_smoothing_minutes ?? 30}">
+              <span class="form-hint">Gleitender Mittelwert über die letzten N Minuten (0 = aus). Verhindert dass schnelle Sonne/Wolken-Wechsel die Heizkurve und den Kessel oszillieren lassen. Empfohlen: 20–30 Minuten.</span>
+            </div>
             <div id="heating-switch-item" class="settings-item">
               <label>Heizungsschalter</label>
               <input type="text" class="form-input" id="heating-switch"
@@ -3874,8 +3905,9 @@ class IHCPanel extends HTMLElement {
 
     content.querySelector("#save-hardware-settings").addEventListener("click", () => {
       this._callService("update_global_settings", {
-        outdoor_temp_sensor:      content.querySelector("#outdoor-sensor").value.trim(),
-        heating_switch:           content.querySelector("#heating-switch").value.trim(),
+        outdoor_temp_sensor:          content.querySelector("#outdoor-sensor").value.trim(),
+        outdoor_temp_smoothing_minutes: parseInt(content.querySelector("#outdoor-smoothing").value, 10) || 0,
+        heating_switch:               content.querySelector("#heating-switch").value.trim(),
         enable_cooling:           content.querySelector("#enable-cooling").value === "true",
         cooling_switch:           content.querySelector("#cooling-switch").value.trim(),
         weather_entity:           content.querySelector("#weather-entity").value.trim(),

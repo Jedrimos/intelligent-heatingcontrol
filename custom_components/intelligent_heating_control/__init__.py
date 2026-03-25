@@ -415,6 +415,8 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
             "limescale_time", "limescale_duration_minutes",
             # Startup grace period
             "startup_grace_seconds",
+            # Outdoor temperature smoothing (moving average window)
+            "outdoor_temp_smoothing_minutes",
         }
         updates = {k: v for k, v in call.data.items() if k in allowed}
         if updates:

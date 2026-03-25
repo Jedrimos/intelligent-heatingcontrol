@@ -201,6 +201,10 @@ CONF_FLOW_TEMP_SENSOR: Final = "flow_temp_sensor"               # sensor.* to re
 # Roadmap 1.1 – Temperature history (7 days × 24 hours of hourly snapshots)
 CONF_TEMP_HISTORY_SIZE: Final = 168                             # 7 × 24 hourly readings per room
 
+# Outdoor temperature smoothing – moving average to prevent heating oscillation on fast sun/cloud changes
+CONF_OUTDOOR_TEMP_SMOOTHING_MINUTES: Final = "outdoor_temp_smoothing_minutes"
+DEFAULT_OUTDOOR_TEMP_SMOOTHING_MINUTES: Final = 30              # minutes of averaging window (0 = off)
+
 # Roadmap 1.2 – Vacation assistant (date range for automatic vacation mode)
 CONF_VACATION_START: Final = "vacation_start"    # ISO date string "YYYY-MM-DD"
 CONF_VACATION_END: Final = "vacation_end"        # ISO date string "YYYY-MM-DD" (inclusive)

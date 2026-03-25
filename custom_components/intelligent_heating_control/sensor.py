@@ -56,6 +56,7 @@ from .const import (
     CONF_LIMESCALE_INTERVAL_DAYS, DEFAULT_LIMESCALE_INTERVAL_DAYS,
     CONF_LIMESCALE_TIME, DEFAULT_LIMESCALE_TIME,
     CONF_LIMESCALE_DURATION_MINUTES, DEFAULT_LIMESCALE_DURATION_MINUTES,
+    CONF_OUTDOOR_TEMP_SMOOTHING_MINUTES, DEFAULT_OUTDOOR_TEMP_SMOOTHING_MINUTES,
 )
 from .coordinator import IHCCoordinator
 
@@ -227,6 +228,8 @@ class IHCTotalDemandSensor(_IHCBase, SensorEntity):
             "limescale_interval_days":     cfg.get(CONF_LIMESCALE_INTERVAL_DAYS, DEFAULT_LIMESCALE_INTERVAL_DAYS),
             "limescale_time":              cfg.get(CONF_LIMESCALE_TIME, DEFAULT_LIMESCALE_TIME),
             "limescale_duration_minutes":  cfg.get(CONF_LIMESCALE_DURATION_MINUTES, DEFAULT_LIMESCALE_DURATION_MINUTES),
+            # Outdoor temperature smoothing
+            "outdoor_temp_smoothing_minutes": cfg.get(CONF_OUTDOOR_TEMP_SMOOTHING_MINUTES, DEFAULT_OUTDOOR_TEMP_SMOOTHING_MINUTES),
         }
 
 

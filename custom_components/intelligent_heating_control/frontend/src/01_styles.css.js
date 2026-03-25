@@ -8,24 +8,36 @@ const STYLES = `
   :host { font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif); display: block; }
   * { box-sizing: border-box; }
 
+  /* ── HA Top Bar ───────────────────────────────────────────────────────────── */
+  .ha-topbar {
+    position: sticky; top: 0; z-index: 200;
+    display: flex; align-items: center; gap: 4px;
+    height: 56px; padding: 0 4px 0 0;
+    background: var(--app-header-background-color, var(--primary-color));
+    color: var(--app-header-text-color, #fff);
+    box-shadow: 0 2px 6px rgba(0,0,0,.25);
+  }
+  .ha-topbar .menu-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 48px; height: 48px; flex-shrink: 0;
+    background: none; border: none; cursor: pointer;
+    color: inherit; border-radius: 50%;
+    transition: background 0.15s;
+  }
+  .ha-topbar .menu-btn:hover { background: rgba(255,255,255,.12); }
+  .ha-topbar .menu-btn svg { width: 24px; height: 24px; fill: currentColor; }
+  .ha-topbar .topbar-title {
+    flex: 1; font-size: 20px; font-weight: 400; letter-spacing: 0.005em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ha-topbar .topbar-version {
+    font-size: 10px; opacity: .7; font-weight: 600;
+    border: 1px solid rgba(255,255,255,.4); padding: 2px 7px;
+    border-radius: 10px; flex-shrink: 0; margin-right: 8px;
+  }
+
   /* ── Layout ─────────────────────────────────────────────────────────────── */
   .panel { max-width: 1100px; margin: 0 auto; padding: 16px 16px 32px; }
-
-  /* ── Header ──────────────────────────────────────────────────────────────── */
-  .header {
-    display: flex; align-items: center; gap: 10px; margin-bottom: 0;
-    padding: 14px 0 12px;
-  }
-  .header-icon { font-size: 22px; flex-shrink: 0; }
-  .header h1 {
-    margin: 0; font-size: 17px; font-weight: 700;
-    color: var(--primary-text-color); flex: 1; letter-spacing: -0.2px;
-  }
-  .header-version {
-    font-size: 10px; color: var(--secondary-text-color);
-    background: var(--secondary-background-color, #f5f5f5);
-    padding: 2px 7px; border-radius: 10px; font-weight: 600; flex-shrink: 0;
-  }
 
   /* ── Tabs ─────────────────────────────────────────────────────────────────── */
   .tabs {

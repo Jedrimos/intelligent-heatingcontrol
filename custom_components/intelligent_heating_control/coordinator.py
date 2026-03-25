@@ -98,6 +98,8 @@ from .const import (
     CONF_FLOW_TEMP_ENTITY,
     # Roadmap 1.1
     CONF_TEMP_HISTORY_SIZE,
+    CONF_OUTDOOR_TEMP_SMOOTHING_MINUTES,
+    DEFAULT_OUTDOOR_TEMP_SMOOTHING_MINUTES,
     DEFAULT_SUMMER_THRESHOLD,
     DEFAULT_FROST_PROTECTION_TEMP,
     DEFAULT_OFF_USE_FROST_PROTECTION,
@@ -379,6 +381,11 @@ class IHCCoordinator(
         self._window_listener_unsub: Optional[Any] = None   # single unsub callback
         self._window_listener_sensors: set = set()           # currently subscribed sensors
         self._window_sensor_last_known: Dict[str, bool] = {}  # entity_id → last real state
+
+        # Outdoor temperature smoothing: rolling buffer of raw readings (one per cycle = 1/min).
+        # Moving average over the last N minutes filters out fast sun/cloud transitions that would
+        # otherwise cause the heating curve to oscillate and the boiler to hunt.
+        self._outdoor_temp_buffer: deque = deque(maxlen=60)  # max 60 readings = 60 min history
 
         # Build sub-components from config
         self._rebuild_from_config()
@@ -787,9 +794,22 @@ class IHCCoordinator(
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             return None
         try:
-            return float(state.state)
+            raw = float(state.state)
         except ValueError:
             return None
+
+        smoothing = int(cfg.get(CONF_OUTDOOR_TEMP_SMOOTHING_MINUTES, DEFAULT_OUTDOOR_TEMP_SMOOTHING_MINUTES))
+        if smoothing <= 1:
+            return raw  # smoothing disabled or set to 0/1 → use raw reading
+
+        # Feed into rolling buffer and return the moving average.
+        # The buffer holds at most 60 entries (one per coordinator cycle = ~1 per minute).
+        # We only use the last `smoothing` readings so the window length is configurable
+        # without changing the deque maxlen.
+        self._outdoor_temp_buffer.append(raw)
+        n = min(smoothing, len(self._outdoor_temp_buffer))
+        readings = list(self._outdoor_temp_buffer)[-n:]
+        return round(sum(readings) / len(readings), 1)
 
     def _get_sensor_temp(self, sensor_entity: str) -> Optional[float]:
         if not sensor_entity:
@@ -1159,9 +1179,12 @@ class IHCCoordinator(
                     frost_temp = self._get_frost_protection_temp()
                     self._set_valve_entities(room, frost_temp)
                 elif self.get_boost_remaining_minutes(room_id) > 0:
-                    # Boost active: try native HA boost preset; fallback to comfort temp
+                    # Boost active: try native HA boost preset first.
+                    # Fallback (TRV doesn't support boost preset): send max_temp so the
+                    # TRV opens the valve fully and heats as fast as possible.
                     if not self._boost_valve_entities(room):
-                        self._set_valve_entities(room, rdata["target_temp"])
+                        max_temp = float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP))
+                        self._set_valve_entities(room, max_temp)
                 else:
                     # Always send the desired target – TRV decides whether to heat
                     self._set_valve_entities(room, rdata["target_temp"])

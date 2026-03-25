@@ -40,6 +40,11 @@
                 value="${a.outdoor_temp_sensor ?? ''}" data-ep-domains="sensor" autocomplete="off">
               <span class="form-hint">Wird für die Heizkurve, Sommerautomatik und Kältewarnung benötigt. Empfohlen: Wetterdienst-Sensor oder externer Temperaturfühler.</span>
             </div>
+            <div class="settings-item">
+              <label>Außentemperatur-Glättung (Minuten)</label>
+              <input type="number" class="form-input" id="outdoor-smoothing" min="0" max="60" step="5" value="${a.outdoor_temp_smoothing_minutes ?? 30}">
+              <span class="form-hint">Gleitender Mittelwert über die letzten N Minuten (0 = aus). Verhindert dass schnelle Sonne/Wolken-Wechsel die Heizkurve und den Kessel oszillieren lassen. Empfohlen: 20–30 Minuten.</span>
+            </div>
             <div id="heating-switch-item" class="settings-item">
               <label>Heizungsschalter</label>
               <input type="text" class="form-input" id="heating-switch"
@@ -802,8 +807,9 @@
 
     content.querySelector("#save-hardware-settings").addEventListener("click", () => {
       this._callService("update_global_settings", {
-        outdoor_temp_sensor:      content.querySelector("#outdoor-sensor").value.trim(),
-        heating_switch:           content.querySelector("#heating-switch").value.trim(),
+        outdoor_temp_sensor:          content.querySelector("#outdoor-sensor").value.trim(),
+        outdoor_temp_smoothing_minutes: parseInt(content.querySelector("#outdoor-smoothing").value, 10) || 0,
+        heating_switch:               content.querySelector("#heating-switch").value.trim(),
         enable_cooling:           content.querySelector("#enable-cooling").value === "true",
         cooling_switch:           content.querySelector("#cooling-switch").value.trim(),
         weather_entity:           content.querySelector("#weather-entity").value.trim(),
