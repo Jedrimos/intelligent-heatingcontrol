@@ -2202,7 +2202,7 @@ class IHCPanel extends HTMLElement {
     const boostBtn = container.querySelector("#rs-boost-btn");
     if (boostBtn) {
       boostBtn.addEventListener("click", () => {
-        const dur = parseInt(container.querySelector("#rs-boost-dur")?.value) || 60;
+        const dur = parseInt(container.querySelector("#rs-boost-dur")?.value, 10) || 60;
         this._callService("boost_room", { id: room.room_id, duration_minutes: dur });
         this._toast(`⚡ Boost ${dur} min für ${room.name}`);
       });
@@ -2255,7 +2255,7 @@ class IHCPanel extends HTMLElement {
         hkv_factor:               parseFloat(container.querySelector("#rs-hkv-factor").value) || 0.083,
         room_presence_entities:   (container.querySelector("#rs-presence-entities")?.value || "")
                                     .split(",").map(s => s.trim()).filter(Boolean),
-        boost_default_duration:   parseInt(container.querySelector("#rs-boost-dur")?.value) || 60,
+        boost_default_duration:   parseInt(container.querySelector("#rs-boost-dur")?.value, 10) || 60,
         trv_temp_weight:          parseFloat(container.querySelector("#rs-trv-temp-weight")?.value) || 0,
         trv_temp_offset:          parseFloat(container.querySelector("#rs-trv-temp-offset")?.value ?? "-2"),
         trv_valve_demand:         container.querySelector("#rs-trv-valve-demand")?.checked === true,
@@ -2383,7 +2383,7 @@ class IHCPanel extends HTMLElement {
 
     container.querySelectorAll(".day-chip").forEach(chip => {
       chip.addEventListener("click", () => {
-        const si = parseInt(chip.dataset.sched);
+        const si = parseInt(chip.dataset.sched, 10);
         const day = chip.dataset.day;
         const sched = this._editingSchedules[selId][si];
         if (sched.days.includes(day)) sched.days = sched.days.filter(d => d !== day);
@@ -2394,8 +2394,8 @@ class IHCPanel extends HTMLElement {
 
     container.querySelectorAll("[data-field]").forEach(inp => {
       inp.addEventListener("change", () => {
-        const si = parseInt(inp.dataset.sched);
-        const pi = parseInt(inp.dataset.period);
+        const si = parseInt(inp.dataset.sched, 10);
+        const pi = parseInt(inp.dataset.period, 10);
         const field = inp.dataset.field;
         let val;
         if (field === "start" || field === "end" || field === "mode") {
@@ -2417,7 +2417,7 @@ class IHCPanel extends HTMLElement {
     // Schedule-level fields (name, condition_entity, condition_state)
     container.querySelectorAll("[data-sched-field]").forEach(inp => {
       inp.addEventListener("input", () => {
-        const si = parseInt(inp.dataset.sched);
+        const si = parseInt(inp.dataset.sched, 10);
         const field = inp.dataset.schedField;
         this._editingSchedules[selId][si][field] = inp.value.trim();
       });
@@ -2429,8 +2429,8 @@ class IHCPanel extends HTMLElement {
 
     container.querySelectorAll("[data-action='del-period']").forEach(btn => {
       btn.addEventListener("click", () => {
-        const si = parseInt(btn.dataset.sched);
-        const pi = parseInt(btn.dataset.period);
+        const si = parseInt(btn.dataset.sched, 10);
+        const pi = parseInt(btn.dataset.period, 10);
         this._editingSchedules[selId][si].periods.splice(pi, 1);
         this._renderRoomScheduleInline(room, container);
       });
@@ -2438,14 +2438,14 @@ class IHCPanel extends HTMLElement {
 
     container.querySelectorAll("[data-action='del-sched']").forEach(btn => {
       btn.addEventListener("click", () => {
-        this._editingSchedules[selId].splice(parseInt(btn.dataset.sched), 1);
+        this._editingSchedules[selId].splice(parseInt(btn.dataset.sched, 10), 1);
         this._renderRoomScheduleInline(room, container);
       });
     });
 
     container.querySelectorAll("[data-action='add-period']").forEach(btn => {
       btn.addEventListener("click", () => {
-        const si = parseInt(btn.dataset.sched);
+        const si = parseInt(btn.dataset.sched, 10);
         this._editingSchedules[selId][si].periods.push(
           { start: "07:00", end: "09:00", mode: "comfort", temperature: 21.0, offset: 0.0 }
         );
@@ -3905,7 +3905,7 @@ class IHCPanel extends HTMLElement {
 
     content.querySelector("#save-night-settings").addEventListener("click", () => {
       const offset = parseFloat(content.querySelector("#night-setback-offset").value);
-      const preheat = parseInt(content.querySelector("#preheat-minutes").value);
+      const preheat = parseInt(content.querySelector("#preheat-minutes").value, 10);
       if (isNaN(offset) || isNaN(preheat)) { this._toast("⚠️ Ungültiger Wert"); return; }
       this._callService("update_global_settings", {
         night_setback_enabled:  content.querySelector("#night-setback-enabled").value === "true",
@@ -3921,9 +3921,9 @@ class IHCPanel extends HTMLElement {
       if (!threshEl) return; // not rendered in TRV mode without heating_switch
       const thresh  = parseFloat(threshEl.value);
       const hyst    = parseFloat(content.querySelector("#demand-hysteresis").value);
-      const minOn   = parseInt(content.querySelector("#min-on-time").value);
-      const minOff  = parseInt(content.querySelector("#min-off-time").value);
-      const minRooms = parseInt(content.querySelector("#min-rooms").value);
+      const minOn   = parseInt(content.querySelector("#min-on-time").value, 10);
+      const minOff  = parseInt(content.querySelector("#min-off-time").value, 10);
+      const minRooms = parseInt(content.querySelector("#min-rooms").value, 10);
       if ([thresh, hyst, minOn, minOff, minRooms].some(isNaN)) { this._toast("⚠️ Ungültiger Wert"); return; }
       this._callService("update_global_settings", {
         demand_threshold:   thresh,
@@ -4126,10 +4126,10 @@ class IHCPanel extends HTMLElement {
     content.querySelector("#save-limescale-settings")?.addEventListener("click", () => {
       this._callService("update_global_settings", {
         limescale_protection_enabled: content.querySelector("#limescale-enabled")?.value === "true",
-        limescale_interval_days:      parseInt(content.querySelector("#limescale-interval")?.value) || 14,
+        limescale_interval_days:      parseInt(content.querySelector("#limescale-interval")?.value, 10) || 14,
         limescale_time:               content.querySelector("#limescale-time")?.value.trim() || "10:00",
-        limescale_duration_minutes:   parseInt(content.querySelector("#limescale-duration")?.value) || 5,
-        stuck_valve_timeout:          parseInt(content.querySelector("#stuck-valve-timeout")?.value) || 1800,
+        limescale_duration_minutes:   parseInt(content.querySelector("#limescale-duration")?.value, 10) || 5,
+        stuck_valve_timeout:          parseInt(content.querySelector("#stuck-valve-timeout")?.value, 10) || 1800,
       });
       this._toast("✓ Kalkschutz gespeichert");
     });
@@ -4222,7 +4222,7 @@ class IHCPanel extends HTMLElement {
     content.querySelector("#save-vacation-range").addEventListener("click", () => {
       const start = content.querySelector("#vacation-start").value;
       const end   = content.querySelector("#vacation-end").value;
-      const preheatDays = parseInt(content.querySelector("#vacation-return-preheat").value) || 0;
+      const preheatDays = parseInt(content.querySelector("#vacation-return-preheat").value, 10) || 0;
       if (!start || !end) { this._toast("⚠️ Bitte Von- und Bis-Datum angeben"); return; }
       if (start > end) { this._toast("⚠️ Das Von-Datum muss vor dem Bis-Datum liegen"); return; }
       this._callService("update_global_settings", {
@@ -4242,7 +4242,7 @@ class IHCPanel extends HTMLElement {
     const activateGuest = content.querySelector("#activate-guest-mode");
     if (activateGuest) {
       activateGuest.addEventListener("click", () => {
-        const dur = parseInt(content.querySelector("#guest-duration").value) || 24;
+        const dur = parseInt(content.querySelector("#guest-duration").value, 10) || 24;
         this._callService("activate_guest_mode", { duration_hours: dur });
         this._toast(`🎉 Gäste-Modus aktiviert (${dur} h)`);
       });
@@ -4255,7 +4255,7 @@ class IHCPanel extends HTMLElement {
       });
     }
     content.querySelector("#save-guest-duration").addEventListener("click", () => {
-      const dur = parseInt(content.querySelector("#guest-duration").value);
+      const dur = parseInt(content.querySelector("#guest-duration").value, 10);
       if (isNaN(dur)) { this._toast("⚠️ Ungültiger Wert"); return; }
       this._callService("update_global_settings", { guest_duration_hours: dur });
       this._toast("✓ Standarddauer gespeichert");
@@ -5200,7 +5200,7 @@ class IHCPanel extends HTMLElement {
         hkv_factor:               parseFloat(modal.querySelector("#m-hkv-factor")?.value) || 0.083,
         room_presence_entities:   (modal.querySelector("#m-presence-entities")?.value || "")
                                     .split(",").map(s => s.trim()).filter(Boolean),
-        boost_default_duration:   parseInt(modal.querySelector("#m-boost-dur")?.value) || 60,
+        boost_default_duration:   parseInt(modal.querySelector("#m-boost-dur")?.value, 10) || 60,
         trv_temp_weight:          parseFloat(modal.querySelector("#m-trv-temp-weight")?.value) || 0,
         trv_temp_offset:          parseFloat(modal.querySelector("#m-trv-temp-offset")?.value ?? "-2"),
         trv_valve_demand:         modal.querySelector("#m-trv-valve-demand")?.checked === true,
@@ -5218,7 +5218,7 @@ class IHCPanel extends HTMLElement {
       const boostBtn = modal?.querySelector("#m-boost-btn");
       if (boostBtn) {
         boostBtn.addEventListener("click", () => {
-          const dur = parseInt(modal.querySelector("#m-boost-dur")?.value) || 60;
+          const dur = parseInt(modal.querySelector("#m-boost-dur")?.value, 10) || 60;
           this._callService("boost_room", { id: room.room_id, duration_minutes: dur });
           this._toast(`⚡ Boost ${dur} min für ${room.name}`);
           this._closeModal();

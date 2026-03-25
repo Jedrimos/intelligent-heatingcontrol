@@ -833,7 +833,7 @@
 
     content.querySelector("#save-night-settings").addEventListener("click", () => {
       const offset = parseFloat(content.querySelector("#night-setback-offset").value);
-      const preheat = parseInt(content.querySelector("#preheat-minutes").value);
+      const preheat = parseInt(content.querySelector("#preheat-minutes").value, 10);
       if (isNaN(offset) || isNaN(preheat)) { this._toast("⚠️ Ungültiger Wert"); return; }
       this._callService("update_global_settings", {
         night_setback_enabled:  content.querySelector("#night-setback-enabled").value === "true",
@@ -849,9 +849,9 @@
       if (!threshEl) return; // not rendered in TRV mode without heating_switch
       const thresh  = parseFloat(threshEl.value);
       const hyst    = parseFloat(content.querySelector("#demand-hysteresis").value);
-      const minOn   = parseInt(content.querySelector("#min-on-time").value);
-      const minOff  = parseInt(content.querySelector("#min-off-time").value);
-      const minRooms = parseInt(content.querySelector("#min-rooms").value);
+      const minOn   = parseInt(content.querySelector("#min-on-time").value, 10);
+      const minOff  = parseInt(content.querySelector("#min-off-time").value, 10);
+      const minRooms = parseInt(content.querySelector("#min-rooms").value, 10);
       if ([thresh, hyst, minOn, minOff, minRooms].some(isNaN)) { this._toast("⚠️ Ungültiger Wert"); return; }
       this._callService("update_global_settings", {
         demand_threshold:   thresh,
@@ -1054,10 +1054,10 @@
     content.querySelector("#save-limescale-settings")?.addEventListener("click", () => {
       this._callService("update_global_settings", {
         limescale_protection_enabled: content.querySelector("#limescale-enabled")?.value === "true",
-        limescale_interval_days:      parseInt(content.querySelector("#limescale-interval")?.value) || 14,
+        limescale_interval_days:      parseInt(content.querySelector("#limescale-interval")?.value, 10) || 14,
         limescale_time:               content.querySelector("#limescale-time")?.value.trim() || "10:00",
-        limescale_duration_minutes:   parseInt(content.querySelector("#limescale-duration")?.value) || 5,
-        stuck_valve_timeout:          parseInt(content.querySelector("#stuck-valve-timeout")?.value) || 1800,
+        limescale_duration_minutes:   parseInt(content.querySelector("#limescale-duration")?.value, 10) || 5,
+        stuck_valve_timeout:          parseInt(content.querySelector("#stuck-valve-timeout")?.value, 10) || 1800,
       });
       this._toast("✓ Kalkschutz gespeichert");
     });
@@ -1150,7 +1150,7 @@
     content.querySelector("#save-vacation-range").addEventListener("click", () => {
       const start = content.querySelector("#vacation-start").value;
       const end   = content.querySelector("#vacation-end").value;
-      const preheatDays = parseInt(content.querySelector("#vacation-return-preheat").value) || 0;
+      const preheatDays = parseInt(content.querySelector("#vacation-return-preheat").value, 10) || 0;
       if (!start || !end) { this._toast("⚠️ Bitte Von- und Bis-Datum angeben"); return; }
       if (start > end) { this._toast("⚠️ Das Von-Datum muss vor dem Bis-Datum liegen"); return; }
       this._callService("update_global_settings", {
@@ -1170,7 +1170,7 @@
     const activateGuest = content.querySelector("#activate-guest-mode");
     if (activateGuest) {
       activateGuest.addEventListener("click", () => {
-        const dur = parseInt(content.querySelector("#guest-duration").value) || 24;
+        const dur = parseInt(content.querySelector("#guest-duration").value, 10) || 24;
         this._callService("activate_guest_mode", { duration_hours: dur });
         this._toast(`🎉 Gäste-Modus aktiviert (${dur} h)`);
       });
@@ -1183,7 +1183,7 @@
       });
     }
     content.querySelector("#save-guest-duration").addEventListener("click", () => {
-      const dur = parseInt(content.querySelector("#guest-duration").value);
+      const dur = parseInt(content.querySelector("#guest-duration").value, 10);
       if (isNaN(dur)) { this._toast("⚠️ Ungültiger Wert"); return; }
       this._callService("update_global_settings", { guest_duration_hours: dur });
       this._toast("✓ Standarddauer gespeichert");

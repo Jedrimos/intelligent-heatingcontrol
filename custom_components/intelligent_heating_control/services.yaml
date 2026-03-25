@@ -51,24 +51,28 @@ add_room:
           min: 15
           max: 30
           step: 0.5
-    eco_temp:
-      name: Eco-Temperatur (°C)
+    eco_offset:
+      name: Eco-Offset (°C)
+      description: Abzug von der Komfort-Temperatur im Eco-Modus (z.B. 3 = 21°C - 3 = 18°C)
       required: false
-      default: 18.0
+      default: 3.0
       selector:
         number:
-          min: 10
-          max: 25
+          min: 0
+          max: 10
           step: 0.5
-    sleep_temp:
-      name: Schlaf-Temperatur (°C)
+          unit_of_measurement: "°C"
+    sleep_offset:
+      name: Schlaf-Offset (°C)
+      description: Abzug von der Komfort-Temperatur im Schlaf-Modus (z.B. 4 = 21°C - 4 = 17°C)
       required: false
-      default: 17.0
+      default: 4.0
       selector:
         number:
-          min: 10
-          max: 25
+          min: 0
+          max: 10
           step: 0.5
+          unit_of_measurement: "°C"
     deadband:
       name: Totband (°C)
       description: Proportionalbereich für die Anforderungsberechnung

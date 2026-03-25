@@ -48,10 +48,6 @@ class WindowManagerMixin:
         close_delay   = int(room.get(CONF_WINDOW_CLOSE_DELAY, DEFAULT_WINDOW_CLOSE_DELAY))
         now           = time.monotonic()
 
-        # Initialise last-known-state cache on first use
-        if not hasattr(self, "_window_sensor_last_known"):
-            self._window_sensor_last_known: Dict[str, bool] = {}
-
         def _sensor_is_open(entity_id: str) -> Optional[bool]:
             """Return True/False for real states; None for unknown/unavailable."""
             state = self.hass.states.get(entity_id)

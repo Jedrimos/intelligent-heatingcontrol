@@ -378,6 +378,7 @@ class IHCCoordinator(
         # would cancel the shared unsub and leave all other sensors unmonitored.
         self._window_listener_unsub: Optional[Any] = None   # single unsub callback
         self._window_listener_sensors: set = set()           # currently subscribed sensors
+        self._window_sensor_last_known: Dict[str, bool] = {}  # entity_id → last real state
 
         # Build sub-components from config
         self._rebuild_from_config()
@@ -455,7 +456,7 @@ class IHCCoordinator(
                 if self._system_mode == SYSTEM_MODE_GUEST:
                     self._guest_mode_active = True
             except ValueError:
-                pass
+                _LOGGER.warning("IHC: Could not restore guest_mode_until from store: %s", guest_until_str)
         # Restore HKV day-start baselines (so energy deltas survive HA restarts)
         self._hkv_day_start = data.get("hkv_day_start", {})
         # Restore smart meter baseline
@@ -465,7 +466,7 @@ class IHCCoordinator(
             try:
                 self._boost_until[rid] = datetime.fromisoformat(dt_str)
             except (ValueError, TypeError):
-                pass
+                _LOGGER.debug("IHC: Could not restore boost_until for room %s: %s", rid, dt_str)
         # Restore temperature history (persisted across restarts)
         for room_id, entries in data.get("temp_history", {}).items():
             self._temp_history[room_id] = deque(entries, maxlen=CONF_TEMP_HISTORY_SIZE)

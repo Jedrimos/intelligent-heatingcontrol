@@ -758,7 +758,7 @@
         hkv_factor:               parseFloat(modal.querySelector("#m-hkv-factor")?.value) || 0.083,
         room_presence_entities:   (modal.querySelector("#m-presence-entities")?.value || "")
                                     .split(",").map(s => s.trim()).filter(Boolean),
-        boost_default_duration:   parseInt(modal.querySelector("#m-boost-dur")?.value) || 60,
+        boost_default_duration:   parseInt(modal.querySelector("#m-boost-dur")?.value, 10) || 60,
         trv_temp_weight:          parseFloat(modal.querySelector("#m-trv-temp-weight")?.value) || 0,
         trv_temp_offset:          parseFloat(modal.querySelector("#m-trv-temp-offset")?.value ?? "-2"),
         trv_valve_demand:         modal.querySelector("#m-trv-valve-demand")?.checked === true,
@@ -776,7 +776,7 @@
       const boostBtn = modal?.querySelector("#m-boost-btn");
       if (boostBtn) {
         boostBtn.addEventListener("click", () => {
-          const dur = parseInt(modal.querySelector("#m-boost-dur")?.value) || 60;
+          const dur = parseInt(modal.querySelector("#m-boost-dur")?.value, 10) || 60;
           this._callService("boost_room", { id: room.room_id, duration_minutes: dur });
           this._toast(`⚡ Boost ${dur} min für ${room.name}`);
           this._closeModal();

@@ -462,7 +462,7 @@
     const boostBtn = container.querySelector("#rs-boost-btn");
     if (boostBtn) {
       boostBtn.addEventListener("click", () => {
-        const dur = parseInt(container.querySelector("#rs-boost-dur")?.value) || 60;
+        const dur = parseInt(container.querySelector("#rs-boost-dur")?.value, 10) || 60;
         this._callService("boost_room", { id: room.room_id, duration_minutes: dur });
         this._toast(`⚡ Boost ${dur} min für ${room.name}`);
       });
@@ -515,7 +515,7 @@
         hkv_factor:               parseFloat(container.querySelector("#rs-hkv-factor").value) || 0.083,
         room_presence_entities:   (container.querySelector("#rs-presence-entities")?.value || "")
                                     .split(",").map(s => s.trim()).filter(Boolean),
-        boost_default_duration:   parseInt(container.querySelector("#rs-boost-dur")?.value) || 60,
+        boost_default_duration:   parseInt(container.querySelector("#rs-boost-dur")?.value, 10) || 60,
         trv_temp_weight:          parseFloat(container.querySelector("#rs-trv-temp-weight")?.value) || 0,
         trv_temp_offset:          parseFloat(container.querySelector("#rs-trv-temp-offset")?.value ?? "-2"),
         trv_valve_demand:         container.querySelector("#rs-trv-valve-demand")?.checked === true,
@@ -643,7 +643,7 @@
 
     container.querySelectorAll(".day-chip").forEach(chip => {
       chip.addEventListener("click", () => {
-        const si = parseInt(chip.dataset.sched);
+        const si = parseInt(chip.dataset.sched, 10);
         const day = chip.dataset.day;
         const sched = this._editingSchedules[selId][si];
         if (sched.days.includes(day)) sched.days = sched.days.filter(d => d !== day);
@@ -654,8 +654,8 @@
 
     container.querySelectorAll("[data-field]").forEach(inp => {
       inp.addEventListener("change", () => {
-        const si = parseInt(inp.dataset.sched);
-        const pi = parseInt(inp.dataset.period);
+        const si = parseInt(inp.dataset.sched, 10);
+        const pi = parseInt(inp.dataset.period, 10);
         const field = inp.dataset.field;
         let val;
         if (field === "start" || field === "end" || field === "mode") {
@@ -677,7 +677,7 @@
     // Schedule-level fields (name, condition_entity, condition_state)
     container.querySelectorAll("[data-sched-field]").forEach(inp => {
       inp.addEventListener("input", () => {
-        const si = parseInt(inp.dataset.sched);
+        const si = parseInt(inp.dataset.sched, 10);
         const field = inp.dataset.schedField;
         this._editingSchedules[selId][si][field] = inp.value.trim();
       });
@@ -689,8 +689,8 @@
 
     container.querySelectorAll("[data-action='del-period']").forEach(btn => {
       btn.addEventListener("click", () => {
-        const si = parseInt(btn.dataset.sched);
-        const pi = parseInt(btn.dataset.period);
+        const si = parseInt(btn.dataset.sched, 10);
+        const pi = parseInt(btn.dataset.period, 10);
         this._editingSchedules[selId][si].periods.splice(pi, 1);
         this._renderRoomScheduleInline(room, container);
       });
@@ -698,14 +698,14 @@
 
     container.querySelectorAll("[data-action='del-sched']").forEach(btn => {
       btn.addEventListener("click", () => {
-        this._editingSchedules[selId].splice(parseInt(btn.dataset.sched), 1);
+        this._editingSchedules[selId].splice(parseInt(btn.dataset.sched, 10), 1);
         this._renderRoomScheduleInline(room, container);
       });
     });
 
     container.querySelectorAll("[data-action='add-period']").forEach(btn => {
       btn.addEventListener("click", () => {
-        const si = parseInt(btn.dataset.sched);
+        const si = parseInt(btn.dataset.sched, 10);
         this._editingSchedules[selId][si].periods.push(
           { start: "07:00", end: "09:00", mode: "comfort", temperature: 21.0, offset: 0.0 }
         );
