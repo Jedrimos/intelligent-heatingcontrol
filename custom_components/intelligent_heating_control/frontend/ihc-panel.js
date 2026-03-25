@@ -622,7 +622,6 @@ const STYLES = `
     .btn { min-height: 42px; }
     .form-input, .form-select { min-height: 42px; font-size: 16px; }
     .card { padding: 12px 14px; }
-    .header h1 { font-size: 15px; }
     .overview-hero { grid-template-columns: 1fr 1fr; }
     .room-temp-big { font-size: 32px; }
   }
