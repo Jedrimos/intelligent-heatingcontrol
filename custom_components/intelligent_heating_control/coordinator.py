@@ -98,6 +98,8 @@ from .const import (
     CONF_FLOW_TEMP_ENTITY,
     # Roadmap 1.1
     CONF_TEMP_HISTORY_SIZE,
+    CONF_OUTDOOR_TEMP_SMOOTHING_MINUTES,
+    DEFAULT_OUTDOOR_TEMP_SMOOTHING_MINUTES,
     DEFAULT_SUMMER_THRESHOLD,
     DEFAULT_FROST_PROTECTION_TEMP,
     DEFAULT_OFF_USE_FROST_PROTECTION,
@@ -235,6 +237,8 @@ from .const import (
     DEFAULT_TRV_VALVE_DEMAND,
     CONF_TRV_MIN_SEND_INTERVAL,
     DEFAULT_TRV_MIN_SEND_INTERVAL,
+    CONF_BOOST_DEFAULT_DURATION,
+    DEFAULT_BOOST_DEFAULT_DURATION,
 )
 from .heating_curve import HeatingCurve
 from .schedule_manager import ScheduleManager
@@ -353,9 +357,19 @@ class IHCCoordinator(
         # before the manual-override detector runs (prevents false "manual override" alerts)
         self._startup_cycles_remaining: int = 1
 
-
         # Manual TRV override detection: track last IHC-set temperature per room
         self._last_ihc_set_temps: Dict[str, float] = {}  # room_id → last temp IHC intentionally set
+
+        # Stuck-valve detection: entity_id → monotonic time when stuck condition first appeared
+        self._trv_stuck_since: Dict[str, float] = {}
+
+        # Kalkschutz: entity_id → date of last exercise
+        self._limescale_last_exercise: Dict[str, Any] = {}
+        # Kalkschutz: entity_id → monotonic time when exercise started (None = not in progress)
+        self._limescale_in_progress: Dict[str, float] = {}
+
+        # ETA preheat: last computed eta_minutes (shared across room loop)
+        self._current_eta_minutes: Optional[float] = None
 
         # Window timing: track when window was first seen open/closed (timestamp)
         self._window_open_since: Dict[str, Optional[float]] = {}   # room_id → epoch when opened
@@ -366,6 +380,12 @@ class IHCCoordinator(
         # would cancel the shared unsub and leave all other sensors unmonitored.
         self._window_listener_unsub: Optional[Any] = None   # single unsub callback
         self._window_listener_sensors: set = set()           # currently subscribed sensors
+        self._window_sensor_last_known: Dict[str, bool] = {}  # entity_id → last real state
+
+        # Outdoor temperature smoothing: rolling buffer of raw readings (one per cycle = 1/min).
+        # Moving average over the last N minutes filters out fast sun/cloud transitions that would
+        # otherwise cause the heating curve to oscillate and the boiler to hunt.
+        self._outdoor_temp_buffer: deque = deque(maxlen=60)  # max 60 readings = 60 min history
 
         # Build sub-components from config
         self._rebuild_from_config()
@@ -405,6 +425,12 @@ class IHCCoordinator(
             min_rooms_demand=int(opts.get(CONF_MIN_ROOMS_DEMAND, DEFAULT_MIN_ROOMS_DEMAND)),
         )
 
+        # Re-subscribe window sensor listeners whenever config changes so that newly
+        # added sensors are monitored immediately (without needing an HA restart).
+        # _setup_window_listeners() is a no-op when the sensor set hasn't changed.
+        if self.hass is not None:
+            self._setup_window_listeners()
+
     async def async_load_runtime_state(self) -> None:
         """Load persisted runtime state from Store."""
         data = await self._store.async_load()
@@ -437,7 +463,7 @@ class IHCCoordinator(
                 if self._system_mode == SYSTEM_MODE_GUEST:
                     self._guest_mode_active = True
             except ValueError:
-                pass
+                _LOGGER.warning("IHC: Could not restore guest_mode_until from store: %s", guest_until_str)
         # Restore HKV day-start baselines (so energy deltas survive HA restarts)
         self._hkv_day_start = data.get("hkv_day_start", {})
         # Restore smart meter baseline
@@ -447,7 +473,7 @@ class IHCCoordinator(
             try:
                 self._boost_until[rid] = datetime.fromisoformat(dt_str)
             except (ValueError, TypeError):
-                pass
+                _LOGGER.debug("IHC: Could not restore boost_until for room %s: %s", rid, dt_str)
         # Restore temperature history (persisted across restarts)
         for room_id, entries in data.get("temp_history", {}).items():
             self._temp_history[room_id] = deque(entries, maxlen=CONF_TEMP_HISTORY_SIZE)
@@ -547,25 +573,17 @@ class IHCCoordinator(
     def get_room_manual_temp(self, room_id: str) -> Optional[float]:
         return self._room_manual_temps.get(room_id)
 
-    def set_room_boost(self, room_id: str, duration_minutes: int = 60, temp: Optional[float] = None) -> None:
+    def set_room_boost(self, room_id: str, duration_minutes: int = 60) -> None:
         """Activate boost mode for a room for the given duration.
 
-        If `temp` is given the room switches to manual mode at that temperature.
-        Otherwise the room config's boost_temp is used; if absent, comfort mode is used.
+        Uses HA native climate boost preset on TRV entities when supported.
+        Falls back to comfort mode temperature for non-boost TRVs and switch mode.
         """
         # Remember current mode so we can restore it after boost ends
         if room_id not in self._boost_until:  # Only save if not already in boost
             self._room_pre_boost_mode[room_id] = self._room_modes.get(room_id, ROOM_MODE_AUTO)
         self._boost_until[room_id] = datetime.now() + timedelta(minutes=duration_minutes)
-        boost_temp = temp
-        if boost_temp is None:
-            room_cfg = self.get_room_config(room_id)
-            boost_temp = room_cfg.get(CONF_BOOST_TEMP) if room_cfg else None
-        if boost_temp is not None:
-            self._room_modes[room_id] = ROOM_MODE_MANUAL
-            self._room_manual_temps[room_id] = float(boost_temp)
-        else:
-            self._room_modes[room_id] = ROOM_MODE_COMFORT
+        self._room_modes[room_id] = ROOM_MODE_COMFORT
         self.async_update_listeners()
         self.hass.async_create_task(self._async_save_runtime_state())
         self.hass.async_create_task(self.async_request_refresh())
@@ -776,9 +794,22 @@ class IHCCoordinator(
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             return None
         try:
-            return float(state.state)
+            raw = float(state.state)
         except ValueError:
             return None
+
+        smoothing = int(cfg.get(CONF_OUTDOOR_TEMP_SMOOTHING_MINUTES, DEFAULT_OUTDOOR_TEMP_SMOOTHING_MINUTES))
+        if smoothing <= 1:
+            return raw  # smoothing disabled or set to 0/1 → use raw reading
+
+        # Feed into rolling buffer and return the moving average.
+        # The buffer holds at most 60 entries (one per coordinator cycle = ~1 per minute).
+        # We only use the last `smoothing` readings so the window length is configurable
+        # without changing the deque maxlen.
+        self._outdoor_temp_buffer.append(raw)
+        n = min(smoothing, len(self._outdoor_temp_buffer))
+        readings = list(self._outdoor_temp_buffer)[-n:]
+        return round(sum(readings) / len(readings), 1)
 
     def _get_sensor_temp(self, sensor_entity: str) -> Optional[float]:
         if not sensor_entity:
@@ -884,6 +915,7 @@ class IHCCoordinator(
         cold_boost = self._get_weather_cold_boost()
         # v1.4 – ETA pre-heat: minutes until someone arrives home
         eta_minutes = self._get_eta_preheat_minutes()
+        self._current_eta_minutes = eta_minutes
         # Controller mode – needed inside the room loop for TRV-specific behaviour
         _loop_ctrl_mode = self.get_config().get(CONF_CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE)
         _loop_trv_mode = _loop_ctrl_mode == CONTROLLER_MODE_TRV
@@ -1047,8 +1079,16 @@ class IHCCoordinator(
                 is_now_warm=demand == 0 and current_temp is not None,
             )
 
+            # Stuck-valve detection: are any TRV valves stuck (calcified / jammed)?
+            stuck_valves = self._detect_stuck_valves(room, room_id, demand)
+
             # Collect mold data – use TRV humidity as fallback if no room humidity sensor
             mold_data = self._check_mold_risk(room, current_temp, trv_humidity=trv_data.get("trv_humidity"))
+
+            # Felt temperature (apparent temperature based on humidity)
+            felt_temperature = None
+            if mold_data and mold_data.get("humidity") is not None and current_temp is not None:
+                felt_temperature = self._calculate_felt_temperature(current_temp, mold_data["humidity"])
 
             # In TRV mode: quantise displayed target to 0.5 °C steps to stay consistent
             # with the actual setpoint sent to TRVs (avoids "21.1°C SOLL, but TRV gets 21.0°C")
@@ -1072,6 +1112,7 @@ class IHCCoordinator(
                 "anomaly": self._detect_sensor_anomaly(room_id),    # Roadmap 1.1
                 "room_presence_active": room_presence_active,       # Roadmap 1.2
                 "mold": mold_data,                                  # Roadmap 2.0
+                "felt_temperature": felt_temperature,              # Gefühlte Temperatur
                 # TRV sensor data (optional – all None when not available)
                 "trv_raw_temp": trv_raw_temp,
                 "trv_humidity": trv_data.get("trv_humidity"),
@@ -1079,6 +1120,7 @@ class IHCCoordinator(
                 "trv_any_heating": trv_data.get("trv_any_heating", False),
                 "trv_min_battery": trv_data.get("trv_min_battery"),
                 "trv_low_battery": trv_data.get("trv_low_battery", False),
+                "trv_stuck_valves": stuck_valves,
                 # Outdoor-regulated effective preset temps (for display in frontend)
                 "comfort_temp_eff": comfort_eff,
                 "eco_temp_eff": eco_eff,
@@ -1136,6 +1178,13 @@ class IHCCoordinator(
                     # (The TRV's internal thermostat would otherwise try to heat if room cools at night)
                     frost_temp = self._get_frost_protection_temp()
                     self._set_valve_entities(room, frost_temp)
+                elif self.get_boost_remaining_minutes(room_id) > 0:
+                    # Boost active: try native HA boost preset first.
+                    # Fallback (TRV doesn't support boost preset): send max_temp so the
+                    # TRV opens the valve fully and heats as fast as possible.
+                    if not self._boost_valve_entities(room):
+                        max_temp = float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP))
+                        self._set_valve_entities(room, max_temp)
                 else:
                     # Always send the desired target – TRV decides whether to heat
                     self._set_valve_entities(room, rdata["target_temp"])
@@ -1168,6 +1217,9 @@ class IHCCoordinator(
 
         if enable_cooling:
             self._set_cooling_switch(should_cool)
+
+        # Kalkschutz: periodisch Ventile bewegen um Verkalkungs-Festfressen zu verhindern
+        self._run_limescale_protection(room_data)
 
         # Roadmap 1.4 – Set boiler flow temp
         flow_temp = self._calculate_flow_temp(outdoor_temp, total_demand)

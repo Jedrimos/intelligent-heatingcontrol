@@ -52,7 +52,8 @@ from .const import (
     CONF_RADIATOR_KW,
     CONF_HKV_SENSOR,
     CONF_HKV_FACTOR,
-    CONF_BOOST_TEMP,
+    CONF_AWAY_TEMP_ROOM,
+    DEFAULT_AWAY_TEMP_ROOM,
     CONF_BOOST_DEFAULT_DURATION,
     CONF_TRV_TEMP_WEIGHT,
     DEFAULT_TRV_TEMP_WEIGHT,
@@ -62,6 +63,7 @@ from .const import (
     DEFAULT_TRV_VALVE_DEMAND,
     CONF_TRV_MIN_SEND_INTERVAL,
     DEFAULT_TRV_MIN_SEND_INTERVAL,
+    CONF_TRV_CALIBRATIONS,
     DEFAULT_ABSOLUTE_MIN_TEMP,
     DEFAULT_ROOM_QM,
     DEFAULT_ROOM_PREHEAT_MINUTES,
@@ -80,7 +82,7 @@ from .coordinator import IHCCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Map HA preset names to our room modes
+# Map HA preset names to our room modes (permanent modes only)
 PRESET_TO_MODE = {
     "Auto": ROOM_MODE_AUTO,
     "Comfort": ROOM_MODE_COMFORT,
@@ -90,6 +92,8 @@ PRESET_TO_MODE = {
     "Manual": ROOM_MODE_MANUAL,
 }
 MODE_TO_PRESET = {v: k for k, v in PRESET_TO_MODE.items()}
+# "Boost" is a runtime-only preset – handled separately in preset_mode/async_set_preset_mode.
+# It must NOT be in PRESET_TO_MODE to avoid MODE_TO_PRESET overwriting "Comfort" → "Boost".
 
 HVAC_MODE_MAP = {
     ROOM_MODE_OFF: HVACMode.OFF,
@@ -113,7 +117,7 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
-    _attr_preset_modes = list(PRESET_TO_MODE.keys())
+    _attr_preset_modes = list(PRESET_TO_MODE.keys()) + ["Boost"]
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.PRESET_MODE
@@ -189,12 +193,14 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
         if controller_mode == "trv":
             # In TRV mode there is no central heating switch – each TRV heats independently.
             # Show HEATING whenever the room has active demand (> 0) or a TRV reports heating.
-            # heating_active (Klimabaustein) is NOT a valid signal here because the Klimabaustein
-            # is bypassed in TRV mode – using it would always return IDLE, even when rooms heat.
             if demand > 0 or d.get("trv_any_heating", False):
                 return HVACAction.HEATING
         else:
-            if data and demand > 0 and data.get("heating_active"):
+            # Switch mode: show HEATING when the room has demand > 0.
+            # The central heating switch (heating_active) controls the boiler but is a
+            # system-level decision – a room calling for heat should show HEATING even if
+            # the boiler threshold hasn't been reached yet (prevents confusing IDLE display).
+            if demand > 0:
                 return HVACAction.HEATING
             if data and data.get("cooling_active"):
                 return HVACAction.COOLING
@@ -202,6 +208,9 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
 
     @property
     def preset_mode(self) -> Optional[str]:
+        d = self._room_data or {}
+        if d.get("boost_remaining", 0) > 0:
+            return "Boost"
         mode = self.coordinator.get_room_mode(self._room_id)
         return MODE_TO_PRESET.get(mode, "Auto")
 
@@ -226,6 +235,7 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "window_sensors": room_cfg.get("window_sensors", []),
             # Legacy fixed temps (kept for fallback / sensor-absent scenario)
             "comfort_temp": room_cfg.get("comfort_temp", 21.0),
+            "away_temp_room": room_cfg.get(CONF_AWAY_TEMP_ROOM, DEFAULT_AWAY_TEMP_ROOM),
             # Outdoor-regulated offsets & caps
             "eco_offset": room_cfg.get("eco_offset", 3.0),
             "sleep_offset": room_cfg.get("sleep_offset", 4.0),
@@ -264,11 +274,11 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "mold_protection_enabled": room_cfg.get(CONF_MOLD_PROTECTION_ENABLED, DEFAULT_MOLD_PROTECTION_ENABLED),
             "mold_humidity_threshold": room_cfg.get(CONF_MOLD_HUMIDITY_THRESHOLD, DEFAULT_MOLD_HUMIDITY_THRESHOLD),
             "mold": d.get("mold"),
+            "felt_temperature": d.get("felt_temperature"),
             # Presence
             "room_presence_entities": room_cfg.get("room_presence_entities", []),
             "room_presence_active": d.get("room_presence_active"),
             # Boost config
-            "boost_temp": room_cfg.get(CONF_BOOST_TEMP),
             "boost_default_duration": room_cfg.get(CONF_BOOST_DEFAULT_DURATION, DEFAULT_BOOST_DEFAULT_DURATION),
             # Ventilation advice + CO2
             "co2_sensor": room_cfg.get(CONF_CO2_SENSOR, ""),
@@ -281,12 +291,14 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "trv_temp_offset": room_cfg.get(CONF_TRV_TEMP_OFFSET, DEFAULT_TRV_TEMP_OFFSET),
             "trv_valve_demand": room_cfg.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND),
             "trv_min_send_interval": room_cfg.get(CONF_TRV_MIN_SEND_INTERVAL, DEFAULT_TRV_MIN_SEND_INTERVAL),
+            "trv_calibrations": room_cfg.get(CONF_TRV_CALIBRATIONS, {}),
             "trv_raw_temp": d.get("trv_raw_temp"),
             "trv_humidity": d.get("trv_humidity"),
             "trv_avg_valve": d.get("trv_avg_valve"),
             "trv_any_heating": d.get("trv_any_heating", False),
             "trv_min_battery": d.get("trv_min_battery"),
             "trv_low_battery": d.get("trv_low_battery", False),
+            "trv_stuck_valves": d.get("trv_stuck_valves", []),
         }
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
@@ -303,5 +315,10 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
                 self.coordinator.set_room_mode(self._room_id, ROOM_MODE_AUTO)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        mode = PRESET_TO_MODE.get(preset_mode, ROOM_MODE_AUTO)
-        self.coordinator.set_room_mode(self._room_id, mode)
+        if preset_mode == "Boost":
+            room_cfg = self.coordinator.get_room_config(self._room_id) or {}
+            duration = int(room_cfg.get(CONF_BOOST_DEFAULT_DURATION, DEFAULT_BOOST_DEFAULT_DURATION))
+            self.coordinator.set_room_boost(self._room_id, duration)
+        else:
+            mode = PRESET_TO_MODE.get(preset_mode, ROOM_MODE_AUTO)
+            self.coordinator.set_room_mode(self._room_id, mode)

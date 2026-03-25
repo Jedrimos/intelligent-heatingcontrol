@@ -87,7 +87,6 @@ from .const import (
     CONF_HKV_SENSOR,
     CONF_HKV_FACTOR,
     CONF_HA_SCHEDULE_OFF_MODE,
-    CONF_BOOST_TEMP,
     CONF_BOOST_DEFAULT_DURATION,
     CONF_ROOM_PRESENCE_ENTITIES,
     CONF_TRV_TEMP_WEIGHT,
@@ -109,6 +108,18 @@ from .const import (
     CONF_ETA_PREHEAT_ENABLED,
     CONF_VACATION_CALENDAR,
     CONF_VACATION_CALENDAR_KEYWORD,
+    # New features
+    CONF_TRV_CALIBRATIONS,
+    CONF_STUCK_VALVE_TIMEOUT,
+    DEFAULT_STUCK_VALVE_TIMEOUT,
+    CONF_LIMESCALE_PROTECTION_ENABLED,
+    DEFAULT_LIMESCALE_PROTECTION_ENABLED,
+    CONF_LIMESCALE_INTERVAL_DAYS,
+    DEFAULT_LIMESCALE_INTERVAL_DAYS,
+    CONF_LIMESCALE_TIME,
+    DEFAULT_LIMESCALE_TIME,
+    CONF_LIMESCALE_DURATION_MINUTES,
+    DEFAULT_LIMESCALE_DURATION_MINUTES,
     DEFAULT_DEMAND_THRESHOLD,
     DEFAULT_DEMAND_HYSTERESIS,
     DEFAULT_MIN_ON_TIME,
@@ -239,6 +250,9 @@ class IHCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_temperatures()
 
         schema = vol.Schema({
+            vol.Optional(CONF_CONTROLLER_MODE, default=DEFAULT_CONTROLLER_MODE): selector.selector({
+                "select": {"options": ["switch", "trv"]}
+            }),
             vol.Optional(CONF_DEMAND_THRESHOLD, default=DEFAULT_DEMAND_THRESHOLD): selector.selector({
                 "number": {"min": 1, "max": 100, "step": 1, "unit_of_measurement": "%", "mode": "slider"}
             }),
@@ -575,6 +589,34 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             ): selector.selector({
                 "number": {"min": 0, "max": 300, "step": 10, "unit_of_measurement": "s", "mode": "slider"}
             }),
+            # --- Stuck-Valve-Erkennung ---
+            vol.Optional(
+                CONF_STUCK_VALVE_TIMEOUT,
+                default=int(cfg.get(CONF_STUCK_VALVE_TIMEOUT, DEFAULT_STUCK_VALVE_TIMEOUT))
+            ): selector.selector({
+                "number": {"min": 300, "max": 7200, "step": 300, "unit_of_measurement": "s", "mode": "box"}
+            }),
+            # --- Kalkschutz ---
+            vol.Optional(
+                CONF_LIMESCALE_PROTECTION_ENABLED,
+                default=bool(cfg.get(CONF_LIMESCALE_PROTECTION_ENABLED, DEFAULT_LIMESCALE_PROTECTION_ENABLED))
+            ): selector.selector({"boolean": {}}),
+            vol.Optional(
+                CONF_LIMESCALE_INTERVAL_DAYS,
+                default=int(cfg.get(CONF_LIMESCALE_INTERVAL_DAYS, DEFAULT_LIMESCALE_INTERVAL_DAYS))
+            ): selector.selector({
+                "number": {"min": 7, "max": 90, "step": 1, "unit_of_measurement": "Tage", "mode": "box"}
+            }),
+            vol.Optional(
+                CONF_LIMESCALE_TIME,
+                default=cfg.get(CONF_LIMESCALE_TIME, DEFAULT_LIMESCALE_TIME)
+            ): selector.selector({"text": {}}),
+            vol.Optional(
+                CONF_LIMESCALE_DURATION_MINUTES,
+                default=int(cfg.get(CONF_LIMESCALE_DURATION_MINUTES, DEFAULT_LIMESCALE_DURATION_MINUTES))
+            ): selector.selector({
+                "number": {"min": 1, "max": 30, "step": 1, "unit_of_measurement": "min", "mode": "box"}
+            }),
         })
         return self.async_show_form(step_id="global_settings", data_schema=vol.Schema(schema_dict), errors=errors)
 
@@ -685,13 +727,13 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
                 CONF_RADIATOR_KW: float(user_input.get(CONF_RADIATOR_KW, DEFAULT_RADIATOR_KW)),
                 CONF_HKV_SENSOR: user_input.get(CONF_HKV_SENSOR, ""),
                 CONF_HKV_FACTOR: float(user_input.get(CONF_HKV_FACTOR, DEFAULT_HKV_FACTOR)),
-                CONF_BOOST_TEMP: float(user_input[CONF_BOOST_TEMP]) if user_input.get(CONF_BOOST_TEMP) not in (None, "") else None,
                 CONF_BOOST_DEFAULT_DURATION: int(user_input.get(CONF_BOOST_DEFAULT_DURATION, DEFAULT_BOOST_DEFAULT_DURATION)),
-                CONF_ROOM_PRESENCE_ENTITIES: [],
+                CONF_ROOM_PRESENCE_ENTITIES: user_input.get(CONF_ROOM_PRESENCE_ENTITIES, []),
                 CONF_TRV_TEMP_WEIGHT: float(user_input.get(CONF_TRV_TEMP_WEIGHT, DEFAULT_TRV_TEMP_WEIGHT)),
                 CONF_TRV_TEMP_OFFSET: float(user_input.get(CONF_TRV_TEMP_OFFSET, DEFAULT_TRV_TEMP_OFFSET)),
                 CONF_TRV_VALVE_DEMAND: bool(user_input.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND)),
                 CONF_TRV_MIN_SEND_INTERVAL: int(user_input.get(CONF_TRV_MIN_SEND_INTERVAL, DEFAULT_TRV_MIN_SEND_INTERVAL)),
+                CONF_TRV_CALIBRATIONS: user_input.get(CONF_TRV_CALIBRATIONS) or {},
                 CONF_SCHEDULES: [],
                 CONF_HA_SCHEDULES: [],
             }
@@ -716,6 +758,9 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             }),
             vol.Optional(CONF_COMFORT_TEMP, default=DEFAULT_COMFORT_TEMP): selector.selector({
                 "number": {"min": 15, "max": 30, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_AWAY_TEMP_ROOM, default=DEFAULT_AWAY_TEMP_ROOM): selector.selector({
+                "number": {"min": 10, "max": 22, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
             vol.Optional(CONF_ECO_OFFSET, default=DEFAULT_ECO_OFFSET): selector.selector({
                 "number": {"min": 0, "max": 8, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
@@ -781,9 +826,6 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_BOOST_DEFAULT_DURATION, default=DEFAULT_BOOST_DEFAULT_DURATION): selector.selector({
                 "number": {"min": 5, "max": 480, "step": 5, "unit_of_measurement": "min", "mode": "box"}
             }),
-            vol.Optional(CONF_BOOST_TEMP): selector.selector({
-                "number": {"min": 15, "max": 35, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
-            }),
             vol.Optional(CONF_TRV_TEMP_WEIGHT, default=DEFAULT_TRV_TEMP_WEIGHT): selector.selector({
                 "number": {"min": 0.0, "max": 0.5, "step": 0.05, "mode": "box"}
             }),
@@ -793,6 +835,10 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_TRV_VALVE_DEMAND, default=DEFAULT_TRV_VALVE_DEMAND): selector.selector({"boolean": {}}),
             vol.Optional(CONF_TRV_MIN_SEND_INTERVAL, default=DEFAULT_TRV_MIN_SEND_INTERVAL): selector.selector({
                 "number": {"min": 0, "max": 1800, "step": 60, "unit_of_measurement": "s", "mode": "box"}
+            }),
+            vol.Optional(CONF_TRV_CALIBRATIONS, default={}): selector.selector({"object": {}}),
+            vol.Optional(CONF_ROOM_PRESENCE_ENTITIES, default=[]): selector.selector({
+                "entity": {"domain": ["person", "device_tracker", "input_boolean", "binary_sensor"], "multiple": True}
             }),
         })
         return self.async_show_form(
@@ -854,6 +900,9 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             }),
             vol.Optional(CONF_COMFORT_TEMP, default=float(room.get(CONF_COMFORT_TEMP, DEFAULT_COMFORT_TEMP))): selector.selector({
                 "number": {"min": 15, "max": 30, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
+            }),
+            vol.Optional(CONF_AWAY_TEMP_ROOM, default=float(room.get(CONF_AWAY_TEMP_ROOM, DEFAULT_AWAY_TEMP_ROOM))): selector.selector({
+                "number": {"min": 10, "max": 22, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
             vol.Optional(CONF_ECO_OFFSET, default=float(room.get(CONF_ECO_OFFSET, DEFAULT_ECO_OFFSET))): selector.selector({
                 "number": {"min": 0, "max": 8, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
@@ -919,9 +968,6 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_BOOST_DEFAULT_DURATION, default=int(room.get(CONF_BOOST_DEFAULT_DURATION, DEFAULT_BOOST_DEFAULT_DURATION))): selector.selector({
                 "number": {"min": 5, "max": 480, "step": 5, "unit_of_measurement": "min", "mode": "box"}
             }),
-            vol.Optional(CONF_BOOST_TEMP, default=room.get(CONF_BOOST_TEMP)): selector.selector({
-                "number": {"min": 15, "max": 35, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
-            }),
             vol.Optional(CONF_TRV_TEMP_WEIGHT, default=float(room.get(CONF_TRV_TEMP_WEIGHT, DEFAULT_TRV_TEMP_WEIGHT))): selector.selector({
                 "number": {"min": 0.0, "max": 0.5, "step": 0.05, "mode": "box"}
             }),
@@ -931,6 +977,10 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_TRV_VALVE_DEMAND, default=bool(room.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND))): selector.selector({"boolean": {}}),
             vol.Optional(CONF_TRV_MIN_SEND_INTERVAL, default=int(room.get(CONF_TRV_MIN_SEND_INTERVAL, DEFAULT_TRV_MIN_SEND_INTERVAL))): selector.selector({
                 "number": {"min": 0, "max": 1800, "step": 60, "unit_of_measurement": "s", "mode": "box"}
+            }),
+            vol.Optional(CONF_TRV_CALIBRATIONS, default=room.get(CONF_TRV_CALIBRATIONS) or {}): selector.selector({"object": {}}),
+            vol.Optional(CONF_ROOM_PRESENCE_ENTITIES, default=room.get(CONF_ROOM_PRESENCE_ENTITIES, [])): selector.selector({
+                "entity": {"domain": ["person", "device_tracker", "input_boolean", "binary_sensor"], "multiple": True}
             }),
         })
         return self.async_show_form(step_id="edit_room_details", data_schema=schema)

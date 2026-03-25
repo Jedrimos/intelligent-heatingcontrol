@@ -54,6 +54,7 @@
         valve_entities: state.attributes.valve_entities || [],
         window_sensors: state.attributes.window_sensors || [],
         comfort_temp: state.attributes.comfort_temp ?? 21,
+        away_temp_room: state.attributes.away_temp_room ?? 16,
         eco_offset: state.attributes.eco_offset ?? 3,
         sleep_offset: state.attributes.sleep_offset ?? 4,
         away_offset: state.attributes.away_offset ?? 6,
@@ -83,7 +84,6 @@
         humidity_sensor: state.attributes.humidity_sensor || "",
         mold_protection_enabled: state.attributes.mold_protection_enabled !== false,
         // Boost config
-        boost_temp: state.attributes.boost_temp ?? null,
         boost_default_duration: state.attributes.boost_default_duration ?? 60,
         // HA schedule blocks (from schedule.* entity config entries)
         ha_schedule_blocks: state.attributes.ha_schedule_blocks || {},

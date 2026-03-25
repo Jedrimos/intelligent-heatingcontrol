@@ -201,6 +201,10 @@ CONF_FLOW_TEMP_SENSOR: Final = "flow_temp_sensor"               # sensor.* to re
 # Roadmap 1.1 – Temperature history (7 days × 24 hours of hourly snapshots)
 CONF_TEMP_HISTORY_SIZE: Final = 168                             # 7 × 24 hourly readings per room
 
+# Outdoor temperature smoothing – moving average to prevent heating oscillation on fast sun/cloud changes
+CONF_OUTDOOR_TEMP_SMOOTHING_MINUTES: Final = "outdoor_temp_smoothing_minutes"
+DEFAULT_OUTDOOR_TEMP_SMOOTHING_MINUTES: Final = 30              # minutes of averaging window (0 = off)
+
 # Roadmap 1.2 – Vacation assistant (date range for automatic vacation mode)
 CONF_VACATION_START: Final = "vacation_start"    # ISO date string "YYYY-MM-DD"
 CONF_VACATION_END: Final = "vacation_end"        # ISO date string "YYYY-MM-DD" (inclusive)
@@ -299,8 +303,7 @@ CONTROLLER_MODE_TRV: Final = "trv"         # control TRVs directly (close them w
 CONTROLLER_MODE_HG: Final = "hg"           # Heat Generator mode – Roadmap 3.0 (WIP)
 DEFAULT_CONTROLLER_MODE: Final = CONTROLLER_MODE_SWITCH
 
-# Boost-Modus (per room)
-CONF_BOOST_TEMP: Final = "boost_temp"               # °C target during boost
+# Boost-Modus (per room) – uses HA native climate boost preset
 CONF_BOOST_DEFAULT_DURATION: Final = "boost_default_duration"  # minutes
 DEFAULT_BOOST_DEFAULT_DURATION: Final = 60
 
@@ -363,3 +366,22 @@ DEFAULT_TRV_VALVE_DEMAND: Final = False
 # 0 = deaktiviert (immer senden wenn Schwelle überschritten), Empfehlung: 300 s (5 min)
 CONF_TRV_MIN_SEND_INTERVAL: Final = "trv_min_send_interval"  # Sekunden
 DEFAULT_TRV_MIN_SEND_INTERVAL: Final = 0  # 0 = nur Temperatur-Hysterese aktiv (compat)
+
+# Per-TRV Kalibrierung (pro Entität, ergänzt den Zimmer-weiten trv_temp_offset)
+# Dict: {"climate.trv_schrank": -2.0, "climate.trv_fenster": 0.5}
+CONF_TRV_CALIBRATIONS: Final = "trv_calibrations"
+
+# Stuck-Valve-Erkennung: Wie lange (Sekunden) muss ein Ventil stuck bleiben
+# bevor ein Alarm ausgelöst wird (Standard: 30 min = 1800s)
+CONF_STUCK_VALVE_TIMEOUT: Final = "stuck_valve_timeout"
+DEFAULT_STUCK_VALVE_TIMEOUT: Final = 1800  # 30 Minuten
+
+# Kalkschutz: periodisches Ventil-Bewegen um Verkalkungs-Festfressen zu verhindern
+CONF_LIMESCALE_PROTECTION_ENABLED: Final = "limescale_protection_enabled"
+DEFAULT_LIMESCALE_PROTECTION_ENABLED: Final = False
+CONF_LIMESCALE_INTERVAL_DAYS: Final = "limescale_interval_days"
+DEFAULT_LIMESCALE_INTERVAL_DAYS: Final = 14  # alle 2 Wochen
+CONF_LIMESCALE_TIME: Final = "limescale_time"
+DEFAULT_LIMESCALE_TIME: Final = "10:00"      # Uhrzeit für Kalkschutz-Übung
+CONF_LIMESCALE_DURATION_MINUTES: Final = "limescale_duration_minutes"
+DEFAULT_LIMESCALE_DURATION_MINUTES: Final = 5  # Minuten vollständig geöffnet

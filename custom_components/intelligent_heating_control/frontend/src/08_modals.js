@@ -60,10 +60,28 @@
       </div>
 
       <div class="form-group">
+        <label class="form-label">Schimmelschutz-Schwelle (%)</label>
+        <input type="number" class="form-input full" id="m-mold-humidity-threshold" value="70" step="1" min="50" max="95">
+        <span class="form-hint">Luftfeuchtigkeit ab der Schimmelschutz-Warnung ausgelöst wird</span>
+      </div>
+
+      <div class="form-group">
         <label class="form-label">CO₂-Sensor (optional)</label>
         <input type="text" class="form-input full" id="m-co2-sensor"
           placeholder="sensor.co2_wohnzimmer" data-ep-domains="sensor" autocomplete="off">
-        <span class="form-hint">ppm → Lüftungsempfehlung (800 ppm gut · >1200 lüften)</span>
+        <span class="form-hint">ppm → Lüftungsempfehlung</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">CO₂ Gut-Schwelle (ppm)</label>
+        <input type="number" class="form-input full" id="m-co2-threshold-good" value="800" step="50" min="400" max="1000">
+        <span class="form-hint">Unter diesem Wert = gute Luft (Standard: 800 ppm)</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">CO₂ Lüften-Schwelle (ppm)</label>
+        <input type="number" class="form-input full" id="m-co2-threshold-bad" value="1200" step="50" min="800" max="2000">
+        <span class="form-hint">Über diesem Wert = Lüftungsempfehlung (Standard: 1200 ppm)</span>
       </div>
 
       <div class="form-group">
@@ -112,6 +130,11 @@
             <input type="number" class="form-input" id="m-comfort" value="21" step="0.5" min="15" max="30">
             <span class="form-hint">Nur wenn kein Außensensor vorhanden</span>
           </div>
+          <div class="settings-item">
+            <label>Abwesend-Temperatur (°C)</label>
+            <input type="number" class="form-input" id="m-away-temp-room" value="16" step="0.5" min="10" max="22">
+            <span class="form-hint">Feste Temperatur wenn Zimmer-Modus auf "Abwesend" steht</span>
+          </div>
         </div>
         <div class="settings-grid" style="margin-top:8px">
           <div class="settings-item">
@@ -151,9 +174,9 @@
         <summary class="modal-section-title">🚀 Boost &amp; TRV-Sensor</summary>
         <div class="settings-grid" style="margin-top:8px">
           <div class="settings-item">
-            <label>Boost-Zieltemperatur (°C)</label>
-            <input type="number" class="form-input" id="m-boost-temp" value="24" step="0.5" min="15" max="35">
-            <span class="form-hint">Temperatur während aktivem Boost-Modus</span>
+            <label>Standard-Boost-Dauer (min)</label>
+            <input type="number" class="form-input" id="m-boost-dur" value="60" step="5" min="5" max="480">
+            <span class="form-hint">Nutzt HA nativen Boost-Modus auf dem TRV – kein manuelles Temperaturziel</span>
           </div>
         </div>
         <div style="font-size:11px;color:var(--secondary-text-color);margin:8px 0">
@@ -248,6 +271,7 @@
           <select class="form-select" id="m-sched-off-mode">
             <option value="eco" selected>Eco-Temperatur</option>
             <option value="sleep">Schlaf-Temperatur</option>
+            <option value="away">Abwesend-Temperatur</option>
           </select>
         </div>
         <!-- schedule/condition rows use data-ep-domains via _createHaScheduleRow -->
@@ -277,6 +301,7 @@
         window_sensors:         windows,
         room_offset:            parseFloat(modal.querySelector("#m-offset")?.value) || 0,
         comfort_temp:           parseFloat(modal.querySelector("#m-comfort")?.value) || 21.0,
+        away_temp_room:         parseFloat(modal.querySelector("#m-away-temp-room")?.value) || 16.0,
         eco_offset:             parseFloat(modal.querySelector("#m-eco-offset")?.value) || 3.0,
         eco_max_temp:           parseFloat(modal.querySelector("#m-eco-max")?.value) || 21.0,
         sleep_offset:           parseFloat(modal.querySelector("#m-sleep-offset")?.value) || 4.0,
@@ -291,15 +316,18 @@
         room_preheat_minutes:   parseInt(modal.querySelector("#m-room-preheat")?.value ?? "-1", 10),
         window_reaction_time:   parseInt(modal.querySelector("#m-window-reaction-time")?.value, 10) || 30,
         window_close_delay:     parseInt(modal.querySelector("#m-window-close-delay")?.value, 10) || 0,
-        humidity_sensor:        modal.querySelector("#m-humidity-sensor")?.value.trim() || "",
-        mold_protection_enabled: modal.querySelector("#m-mold-protection")?.value === "true",
-        co2_sensor:             modal.querySelector("#m-co2-sensor")?.value.trim() || "",
+        humidity_sensor:          modal.querySelector("#m-humidity-sensor")?.value.trim() || "",
+        mold_protection_enabled:  modal.querySelector("#m-mold-protection")?.value === "true",
+        mold_humidity_threshold:  parseFloat(modal.querySelector("#m-mold-humidity-threshold")?.value) || 70,
+        co2_sensor:               modal.querySelector("#m-co2-sensor")?.value.trim() || "",
+        co2_threshold_good:       parseInt(modal.querySelector("#m-co2-threshold-good")?.value, 10) || 800,
+        co2_threshold_bad:        parseInt(modal.querySelector("#m-co2-threshold-bad")?.value, 10) || 1200,
         room_presence_entities: (modal.querySelector("#m-presence-entities")?.value || "")
                                   .split(",").map(s => s.trim()).filter(Boolean),
         radiator_kw:            parseFloat(modal.querySelector("#m-radiator-kw")?.value) || 1.0,
         hkv_sensor:             modal.querySelector("#m-hkv-sensor")?.value.trim() || "",
         hkv_factor:             parseFloat(modal.querySelector("#m-hkv-factor")?.value) || 0.083,
-        boost_temp:             parseFloat(modal.querySelector("#m-boost-temp")?.value) || null,
+        boost_default_duration: parseInt(modal.querySelector("#m-boost-dur")?.value, 10) || 60,
         trv_temp_weight:        parseFloat(modal.querySelector("#m-trv-temp-weight")?.value) || 0,
         trv_temp_offset:        parseFloat(modal.querySelector("#m-trv-temp-offset")?.value ?? "-2"),
         trv_valve_demand:       modal.querySelector("#m-trv-valve-demand")?.checked === true,
@@ -397,6 +425,11 @@
             <label>Komfort Fallback (°C)</label>
             <input type="number" class="form-input" id="m-comfort" value="${room.comfort_temp}" step="0.5" min="15" max="30">
             <span class="form-hint">Nur wenn kein Außensensor vorhanden</span>
+          </div>
+          <div class="settings-item">
+            <label>Abwesend-Temperatur (°C)</label>
+            <input type="number" class="form-input" id="m-away-temp-room" value="${room.away_temp_room ?? 16}" step="0.5" min="10" max="22">
+            <span class="form-hint">Feste Temperatur wenn Zimmer-Modus auf "Abwesend" steht</span>
           </div>
         </div>
         <div class="settings-grid" style="margin-top:8px">
@@ -525,11 +558,29 @@
               </select>
             </div>
             <div class="settings-item">
+              <label>Schimmelschutz-Schwelle (%)</label>
+              <input type="number" class="form-input" id="m-mold-humidity-threshold"
+                value="${room.mold_humidity_threshold ?? 70}" step="1" min="50" max="95">
+              <span class="form-hint">Luftfeuchtigkeit ab der Schimmelschutz ausgelöst wird</span>
+            </div>
+            <div class="settings-item">
               <label>CO₂-Sensor <em style="font-weight:400">(optional)</em></label>
               <input type="text" class="form-input" id="m-co2-sensor"
                 value="${room.co2_sensor || ''}" placeholder="sensor.co2_wohnzimmer (optional)"
                 data-ep-domains="sensor" autocomplete="off">
-              <span class="form-hint">ppm → Lüftungsempfehlung (800 ppm gut, >1200 lüften)</span>
+              <span class="form-hint">ppm → Lüftungsempfehlung</span>
+            </div>
+            <div class="settings-item">
+              <label>CO₂ Gut-Schwelle (ppm)</label>
+              <input type="number" class="form-input" id="m-co2-threshold-good"
+                value="${room.co2_threshold_good ?? 800}" step="50" min="400" max="1000">
+              <span class="form-hint">Unter diesem Wert = gute Luft (Standard: 800 ppm)</span>
+            </div>
+            <div class="settings-item">
+              <label>CO₂ Lüften-Schwelle (ppm)</label>
+              <input type="number" class="form-input" id="m-co2-threshold-bad"
+                value="${room.co2_threshold_bad ?? 1200}" step="50" min="800" max="2000">
+              <span class="form-hint">Über diesem Wert = Lüftungsempfehlung (Standard: 1200 ppm)</span>
             </div>
           </div>
         </div>
@@ -574,8 +625,9 @@
           <div class="settings-item" style="margin-bottom:10px">
             <label>Wenn kein Zeitplan aktiv</label>
             <select class="form-select" id="m-sched-off-mode">
-              <option value="eco"   ${(typeof room !== 'undefined' ? room.ha_schedule_off_mode : 'eco') === 'eco'   ? 'selected' : ''}>Eco-Temperatur</option>
-              <option value="sleep" ${(typeof room !== 'undefined' ? room.ha_schedule_off_mode : 'eco') === 'sleep' ? 'selected' : ''}>Schlaf-Temperatur</option>
+              <option value="eco"   ${(room.ha_schedule_off_mode || 'eco') === 'eco'   ? 'selected' : ''}>Eco-Temperatur</option>
+              <option value="sleep" ${(room.ha_schedule_off_mode || 'eco') === 'sleep' ? 'selected' : ''}>Schlaf-Temperatur</option>
+              <option value="away"  ${(room.ha_schedule_off_mode || 'eco') === 'away'  ? 'selected' : ''}>Abwesend-Temperatur</option>
             </select>
           </div>
           <div id="m-ha-sched-list"></div>
@@ -586,13 +638,10 @@
       <details class="modal-collapsible">
         <summary>⚡ Boost</summary>
         <div class="modal-collapsible-body">
+          <p style="font-size:0.85em;color:var(--secondary-text-color);margin:0 0 8px">
+            Aktiviert den nativen HA-Boost-Modus auf den TRVs. Kein Temperaturziel – der TRV öffnet vollständig.
+          </p>
           <div class="settings-grid" style="margin-bottom:10px">
-            <div class="settings-item">
-              <label>Boost-Temperatur (°C)</label>
-              <input type="number" class="form-input" id="m-boost-temp"
-                value="${room.boost_temp ?? room.comfort_temp ?? 22}" min="15" max="35" step="0.5">
-              <span class="form-hint">Zieltemperatur während Boost (leer = Komfort)</span>
-            </div>
             <div class="settings-item">
               <label>Boost-Dauer (min)</label>
               <input type="number" class="form-input" id="m-boost-dur"
@@ -647,6 +696,16 @@
                 Empfehlung: 300–600 s. 0 = deaktiviert (immer senden wenn Schwelle überschritten).
               </span>
             </div>
+            <div class="settings-item" style="grid-column:1/-1">
+              <label>🎯 Per-TRV-Kalibrierung (JSON-Dict)</label>
+              <textarea class="form-input" id="m-trv-calibrations" rows="3"
+                placeholder='{"climate.trv_schrank": -2.0, "climate.trv_fenster": 0.5}'
+                style="font-family:monospace;font-size:11px">${room.trv_calibrations ? JSON.stringify(room.trv_calibrations, null, 0) : ""}</textarea>
+              <span class="form-hint">
+                Optionale Temperatur-Offsets pro TRV-Entität (in °C). Negativ = TRV misst zu warm (z.B. nahe am Heizkörper).
+                Format: <code>{"climate.trv_name": -2.0}</code>. Leer = deaktiviert.
+              </span>
+            </div>
           </div>
         </div>
       </details>
@@ -672,6 +731,7 @@
         window_sensor:  windows[0] || "",
         window_sensors: windows,
         comfort_temp:          parseFloat(modal.querySelector("#m-comfort").value),
+        away_temp_room:        parseFloat(modal.querySelector("#m-away-temp-room")?.value) || 16.0,
         eco_offset:            parseFloat(modal.querySelector("#m-eco-offset").value),
         eco_max_temp:          parseFloat(modal.querySelector("#m-eco-max").value),
         sleep_offset:          parseFloat(modal.querySelector("#m-sleep-offset").value),
@@ -689,18 +749,21 @@
         window_close_delay:     parseInt(modal.querySelector("#m-window-close-delay")?.value, 10) || 0,
         humidity_sensor:          modal.querySelector("#m-humidity-sensor")?.value.trim() || "",
         mold_protection_enabled:  modal.querySelector("#m-mold-protection")?.value === "true",
+        mold_humidity_threshold:  parseFloat(modal.querySelector("#m-mold-humidity-threshold")?.value) || 70,
         co2_sensor:               modal.querySelector("#m-co2-sensor")?.value.trim() || "",
+        co2_threshold_good:       parseInt(modal.querySelector("#m-co2-threshold-good")?.value, 10) || 800,
+        co2_threshold_bad:        parseInt(modal.querySelector("#m-co2-threshold-bad")?.value, 10) || 1200,
         radiator_kw:              parseFloat(modal.querySelector("#m-radiator-kw")?.value) || 1.0,
         hkv_sensor:               modal.querySelector("#m-hkv-sensor")?.value.trim() || "",
         hkv_factor:               parseFloat(modal.querySelector("#m-hkv-factor")?.value) || 0.083,
         room_presence_entities:   (modal.querySelector("#m-presence-entities")?.value || "")
                                     .split(",").map(s => s.trim()).filter(Boolean),
-        boost_temp:               parseFloat(modal.querySelector("#m-boost-temp")?.value) || null,
-        boost_default_duration:   parseInt(modal.querySelector("#m-boost-dur")?.value) || 60,
+        boost_default_duration:   parseInt(modal.querySelector("#m-boost-dur")?.value, 10) || 60,
         trv_temp_weight:          parseFloat(modal.querySelector("#m-trv-temp-weight")?.value) || 0,
         trv_temp_offset:          parseFloat(modal.querySelector("#m-trv-temp-offset")?.value ?? "-2"),
         trv_valve_demand:         modal.querySelector("#m-trv-valve-demand")?.checked === true,
         trv_min_send_interval:    parseInt(modal.querySelector("#m-trv-min-send-interval")?.value, 10) || 0,
+        trv_calibrations:         (() => { try { const v = modal.querySelector("#m-trv-calibrations")?.value.trim(); return v ? JSON.parse(v) : {}; } catch { return {}; } })(),
         ha_schedules,
       });
       this._closeModal();
@@ -713,12 +776,9 @@
       const boostBtn = modal?.querySelector("#m-boost-btn");
       if (boostBtn) {
         boostBtn.addEventListener("click", () => {
-          const dur  = parseInt(modal.querySelector("#m-boost-dur")?.value) || 60;
-          const temp = parseFloat(modal.querySelector("#m-boost-temp")?.value) || null;
-          const data = { id: room.room_id, duration_minutes: dur };
-          if (temp && !isNaN(temp)) data.temp = temp;
-          this._callService("boost_room", data);
-          this._toast(`⚡ Boost ${dur} min ${temp ? `→ ${temp}°C ` : ""}für ${room.name}`);
+          const dur = parseInt(modal.querySelector("#m-boost-dur")?.value, 10) || 60;
+          this._callService("boost_room", { id: room.room_id, duration_minutes: dur });
+          this._toast(`⚡ Boost ${dur} min für ${room.name}`);
           this._closeModal();
         });
       }

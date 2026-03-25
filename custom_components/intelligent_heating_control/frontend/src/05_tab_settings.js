@@ -40,6 +40,11 @@
                 value="${a.outdoor_temp_sensor ?? ''}" data-ep-domains="sensor" autocomplete="off">
               <span class="form-hint">Wird für die Heizkurve, Sommerautomatik und Kältewarnung benötigt. Empfohlen: Wetterdienst-Sensor oder externer Temperaturfühler.</span>
             </div>
+            <div class="settings-item">
+              <label>Außentemperatur-Glättung (Minuten)</label>
+              <input type="number" class="form-input" id="outdoor-smoothing" min="0" max="60" step="5" value="${a.outdoor_temp_smoothing_minutes ?? 30}">
+              <span class="form-hint">Gleitender Mittelwert über die letzten N Minuten (0 = aus). Verhindert dass schnelle Sonne/Wolken-Wechsel die Heizkurve und den Kessel oszillieren lassen. Empfohlen: 20–30 Minuten.</span>
+            </div>
             <div id="heating-switch-item" class="settings-item">
               <label>Heizungsschalter</label>
               <input type="text" class="form-input" id="heating-switch"
@@ -675,6 +680,55 @@
         </div>
       </details>
 
+      <!-- ── Kalkschutz & TRV-Wartung ───────────────────── -->
+      <details class="ihc-card" ${a.limescale_protection_enabled ? "open" : ""}>
+        <summary>
+          <span class="ihc-card-title">🔩 Kalkschutz &amp; Stuck-Valve-Erkennung
+            ${a.limescale_protection_enabled ? activeBadge("Aktiv") : ""}
+          </span>
+        </summary>
+        <div class="ihc-card-body">
+          <div class="info-box">Verhindert das Festfressen von TRV-Ventilen durch Kalk. Bewegt die Ventile regelmäßig durch den vollen Hub.</div>
+          <div class="settings-grid">
+            <div class="settings-item">
+              <label>Kalkschutz aktiviert</label>
+              <select class="form-select" id="limescale-enabled">
+                <option value="false" ${!a.limescale_protection_enabled ? "selected" : ""}>Deaktiviert</option>
+                <option value="true"  ${a.limescale_protection_enabled  ? "selected" : ""}>Aktiviert</option>
+              </select>
+              <span class="form-hint">Öffnet alle TRV-Ventile vollständig für kurze Zeit in regelmäßigen Abständen.</span>
+            </div>
+            <div class="settings-item">
+              <label>Intervall (Tage)</label>
+              <input type="number" class="form-input" id="limescale-interval" min="7" max="90" step="1"
+                value="${a.limescale_interval_days ?? 14}">
+              <span class="form-hint">Alle N Tage wird die Übung durchgeführt (Standard: 14 Tage).</span>
+            </div>
+            <div class="settings-item">
+              <label>Uhrzeit (HH:MM)</label>
+              <input type="text" class="form-input" id="limescale-time" placeholder="10:00"
+                value="${a.limescale_time ?? '10:00'}">
+              <span class="form-hint">Zeitfenster (±15 min) für die Ventil-Übung. Wähle eine Zeit wenn niemand zuhause friert.</span>
+            </div>
+            <div class="settings-item">
+              <label>Dauer (min)</label>
+              <input type="number" class="form-input" id="limescale-duration" min="1" max="30" step="1"
+                value="${a.limescale_duration_minutes ?? 5}">
+              <span class="form-hint">Wie lange die Ventile vollständig geöffnet bleiben (Standard: 5 min).</span>
+            </div>
+            <div class="settings-item">
+              <label>Stuck-Valve Timeout (s)</label>
+              <input type="number" class="form-input" id="stuck-valve-timeout" min="300" max="7200" step="300"
+                value="${a.stuck_valve_timeout ?? 1800}">
+              <span class="form-hint">Sekunden bis ein klemmendes Ventil als Fehler gemeldet wird (Standard: 1800 = 30 min). Erkannte Fehler erscheinen als binary_sensor.</span>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="save-limescale-settings">💾 Kalkschutz speichern</button>
+          </div>
+        </div>
+      </details>
+
       <!-- ── Urlaubs-Assistent ───────────────────────────── -->
       <details class="ihc-card" ${g.vacation_auto_active || a.vacation_start ? "open" : ""}>
         <summary>
@@ -753,8 +807,9 @@
 
     content.querySelector("#save-hardware-settings").addEventListener("click", () => {
       this._callService("update_global_settings", {
-        outdoor_temp_sensor:      content.querySelector("#outdoor-sensor").value.trim(),
-        heating_switch:           content.querySelector("#heating-switch").value.trim(),
+        outdoor_temp_sensor:          content.querySelector("#outdoor-sensor").value.trim(),
+        outdoor_temp_smoothing_minutes: parseInt(content.querySelector("#outdoor-smoothing").value, 10) || 0,
+        heating_switch:               content.querySelector("#heating-switch").value.trim(),
         enable_cooling:           content.querySelector("#enable-cooling").value === "true",
         cooling_switch:           content.querySelector("#cooling-switch").value.trim(),
         weather_entity:           content.querySelector("#weather-entity").value.trim(),
@@ -784,7 +839,7 @@
 
     content.querySelector("#save-night-settings").addEventListener("click", () => {
       const offset = parseFloat(content.querySelector("#night-setback-offset").value);
-      const preheat = parseInt(content.querySelector("#preheat-minutes").value);
+      const preheat = parseInt(content.querySelector("#preheat-minutes").value, 10);
       if (isNaN(offset) || isNaN(preheat)) { this._toast("⚠️ Ungültiger Wert"); return; }
       this._callService("update_global_settings", {
         night_setback_enabled:  content.querySelector("#night-setback-enabled").value === "true",
@@ -800,9 +855,9 @@
       if (!threshEl) return; // not rendered in TRV mode without heating_switch
       const thresh  = parseFloat(threshEl.value);
       const hyst    = parseFloat(content.querySelector("#demand-hysteresis").value);
-      const minOn   = parseInt(content.querySelector("#min-on-time").value);
-      const minOff  = parseInt(content.querySelector("#min-off-time").value);
-      const minRooms = parseInt(content.querySelector("#min-rooms").value);
+      const minOn   = parseInt(content.querySelector("#min-on-time").value, 10);
+      const minOff  = parseInt(content.querySelector("#min-off-time").value, 10);
+      const minRooms = parseInt(content.querySelector("#min-rooms").value, 10);
       if ([thresh, hyst, minOn, minOff, minRooms].some(isNaN)) { this._toast("⚠️ Ungültiger Wert"); return; }
       this._callService("update_global_settings", {
         demand_threshold:   thresh,
@@ -1002,6 +1057,17 @@
       this._toast("✓ Intelligente Regelung gespeichert");
     });
 
+    content.querySelector("#save-limescale-settings")?.addEventListener("click", () => {
+      this._callService("update_global_settings", {
+        limescale_protection_enabled: content.querySelector("#limescale-enabled")?.value === "true",
+        limescale_interval_days:      parseInt(content.querySelector("#limescale-interval")?.value, 10) || 14,
+        limescale_time:               content.querySelector("#limescale-time")?.value.trim() || "10:00",
+        limescale_duration_minutes:   parseInt(content.querySelector("#limescale-duration")?.value, 10) || 5,
+        stuck_valve_timeout:          parseInt(content.querySelector("#stuck-valve-timeout")?.value, 10) || 1800,
+      });
+      this._toast("✓ Kalkschutz gespeichert");
+    });
+
     content.querySelector("#reset-curve-btn")?.addEventListener("click", () => {
       if (!confirm("Kurvenkorrektur zurücksetzen?\n\n• Adaptive Heizkurven-Offset → 0 °C\n\nDie Vorheizzeiten-Historie bleibt erhalten.")) return;
       this._callService("reset_stats", { reset_curve: true }).then(() => {
@@ -1090,7 +1156,7 @@
     content.querySelector("#save-vacation-range").addEventListener("click", () => {
       const start = content.querySelector("#vacation-start").value;
       const end   = content.querySelector("#vacation-end").value;
-      const preheatDays = parseInt(content.querySelector("#vacation-return-preheat").value) || 0;
+      const preheatDays = parseInt(content.querySelector("#vacation-return-preheat").value, 10) || 0;
       if (!start || !end) { this._toast("⚠️ Bitte Von- und Bis-Datum angeben"); return; }
       if (start > end) { this._toast("⚠️ Das Von-Datum muss vor dem Bis-Datum liegen"); return; }
       this._callService("update_global_settings", {
@@ -1110,7 +1176,7 @@
     const activateGuest = content.querySelector("#activate-guest-mode");
     if (activateGuest) {
       activateGuest.addEventListener("click", () => {
-        const dur = parseInt(content.querySelector("#guest-duration").value) || 24;
+        const dur = parseInt(content.querySelector("#guest-duration").value, 10) || 24;
         this._callService("activate_guest_mode", { duration_hours: dur });
         this._toast(`🎉 Gäste-Modus aktiviert (${dur} h)`);
       });
@@ -1123,7 +1189,7 @@
       });
     }
     content.querySelector("#save-guest-duration").addEventListener("click", () => {
-      const dur = parseInt(content.querySelector("#guest-duration").value);
+      const dur = parseInt(content.querySelector("#guest-duration").value, 10);
       if (isNaN(dur)) { this._toast("⚠️ Ungültiger Wert"); return; }
       this._callService("update_global_settings", { guest_duration_hours: dur });
       this._toast("✓ Standarddauer gespeichert");
