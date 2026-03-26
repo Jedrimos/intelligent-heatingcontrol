@@ -1168,16 +1168,18 @@ Abgleich mit dem Blueprint `panhans/advanced_heating_control.yaml` ergab folgend
 - [x] `const.py` – `CONF_PRESENCE_AWAY_DELAY_MINUTES`, `DEFAULT_PRESENCE_AWAY_DELAY_MINUTES = 0`
 - [x] `presence_manager.py` – Delay-Timer in `_update_presence_auto_away()` (mit `_presence_away_pending_since`)
 - [x] `coordinator.py` – `_presence_away_pending_since = None` initialisiert + Import
-- [ ] `config_flow.py` – Slider 0–120 min in `async_step_global_settings()` nahe Presence-Sektion
+- [ ] `coordinator.py` – Persistenz: `_presence_away_pending_since` als ISO-String in `_async_save_runtime_state()` / `async_load_runtime_state()` speichern (wie `_guest_mode_until`) – sonst geht Timer nach HA-Neustart verloren
+- [ ] `config_flow.py` – Number-Selector 0–120 min in `async_step_global_settings()` nahe Presence-Sektion
 - [ ] Frontend `05_tab_settings.js` – Slider in Anwesenheits-Abschnitt
 
 ##### `CONF_ROOM_TEMP_THRESHOLD` – Temperaturschwelle pro Zimmer
 - [x] `const.py` – `CONF_ROOM_TEMP_THRESHOLD`, `DEFAULT_ROOM_TEMP_THRESHOLD = 0.0`
 - [x] `room_logic.py` – Check in `_calculate_target_temp()` nach Systemmode-Checks (1b), vor Raummode-Checks (2): wenn `current_temp < threshold` → Komfort-Sollwert erzwingen (source: `"temp_threshold_override"`)
-- [ ] `config_flow.py` – Feld in Add/Edit-Room (number: 0–25°C, 0=deaktiviert)
-- [ ] `__init__.py` – `handle_add_room()`: `CONF_ROOM_TEMP_THRESHOLD: float(...)`; `_FLOAT_FIELDS` in `handle_update_room()`
+- [ ] `config_flow.py` – Feld in Add/Edit-Room (number: 0–25°C, 0=deaktiviert); Entity-Selector in `async_step_add_room` + `async_step_edit_room_details`
+- [ ] `__init__.py` – `handle_add_room()`: `CONF_ROOM_TEMP_THRESHOLD: float(...)`; `_FLOAT_FIELDS` in `handle_update_room()` ergänzen
 - [ ] Frontend `08_modals.js` – Feld in Add/Edit-Modal (beide synchron!)
 - [ ] Frontend `04_tab_rooms.js` – Zimmer-Detail: Badge/Status anzeigen wenn aktiv
+- **Architektur-Hinweis:** Besser `_calculate_target_temp(room, outdoor_temp, current_temp=None)` als Parameter statt Sensor direkt lesen – sauberere Trennung, Caller in coordinator.py übergibt `current_temp` der dort bereits berechnet ist
 
 ##### `CONF_COMFORT_TEMP_ENTITY` / `CONF_ECO_TEMP_ENTITY` – Dynamische Sollwert-Entitäten
 - [x] `const.py` – `CONF_COMFORT_TEMP_ENTITY`, `CONF_ECO_TEMP_ENTITY` definiert
