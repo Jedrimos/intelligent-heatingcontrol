@@ -389,6 +389,14 @@ DEFAULT_PRESENCE_SENSOR_OFF_DELAY: Final = 300  # 5 Minuten – verhindert sofor
 CONF_WINDOW_OPEN_TEMP: Final = "window_open_temp"
 DEFAULT_WINDOW_OPEN_TEMP: Final = 0.0  # 0 = Frostschutz-Temp verwenden (Legacy-Verhalten)
 
+# Aggressiver Modus: Überhitzt TRV-Sollwert wenn Raum weit unter Soll (für träge TRVs)
+CONF_AGGRESSIVE_MODE_ENABLED: Final = "aggressive_mode_enabled"
+DEFAULT_AGGRESSIVE_MODE_ENABLED: Final = False
+CONF_AGGRESSIVE_MODE_RANGE: Final = "aggressive_mode_range"    # °C unter Soll → aktiviert
+DEFAULT_AGGRESSIVE_MODE_RANGE: Final = 2.0
+CONF_AGGRESSIVE_MODE_OFFSET: Final = "aggressive_mode_offset"  # °C Überhöhung über Soll
+DEFAULT_AGGRESSIVE_MODE_OFFSET: Final = 3.0
+
 # Pro-Zimmer Temperaturschwelle: Heizt immer wenn Raumtemperatur darunter liegt (Blueprint: input_mode_room_temperature_threshold)
 CONF_ROOM_TEMP_THRESHOLD: Final = "room_temp_threshold"  # °C, 0.0 = deaktiviert
 DEFAULT_ROOM_TEMP_THRESHOLD: Final = 0.0
