@@ -406,6 +406,11 @@ class IHCCoordinator(
         self._window_listener_sensors: set = set()           # currently subscribed sensors
         self._window_sensor_last_known: Dict[str, bool] = {}  # entity_id → last real state
 
+        # Event-driven HA schedule / condition detection: triggers immediate refresh when
+        # a schedule entity or condition_entity (input_boolean, etc.) changes state.
+        self._ha_sched_listener_unsub: Optional[Any] = None
+        self._ha_sched_listener_entities: set = set()
+
         # Outdoor temperature smoothing: rolling buffer of raw readings (one per cycle = 1/min).
         # Moving average over the last N minutes filters out fast sun/cloud transitions that would
         # otherwise cause the heating curve to oscillate and the boiler to hunt.
@@ -454,6 +459,7 @@ class IHCCoordinator(
         # _setup_window_listeners() is a no-op when the sensor set hasn't changed.
         if self.hass is not None:
             self._setup_window_listeners()
+            self._setup_ha_schedule_listeners()
 
     async def async_load_runtime_state(self) -> None:
         """Load persisted runtime state from Store."""
@@ -746,6 +752,61 @@ class IHCCoordinator(
             return True  # entity unavailable → assume enabled
         return state.state.lower() not in ("off", "false", "0", "no")
 
+    def _setup_ha_schedule_listeners(self) -> None:
+        """Subscribe to state changes of all HA schedule entities and condition entities.
+
+        When a schedule.* entity or a condition_entity (input_boolean etc.) changes state,
+        trigger an immediate coordinator refresh so the heating reacts without waiting up
+        to 60 seconds for the next regular poll cycle.
+
+        Example: Plan 1 (no condition) ends at 18:00. User switches boolean ON at 18:30.
+        Plan 2 (condition: boolean=on, active until 20:00) should immediately start heating.
+        """
+        entity_ids: set[str] = set()
+        for room in self.get_rooms():
+            for ha_sched in room.get(CONF_HA_SCHEDULES, []):
+                sched_entity = ha_sched.get("entity", "")
+                if sched_entity:
+                    entity_ids.add(sched_entity)
+                cond_entity = ha_sched.get("condition_entity", "")
+                if cond_entity:
+                    entity_ids.add(cond_entity)
+
+        # No-op if entity set hasn't changed
+        if entity_ids == self._ha_sched_listener_entities:
+            return
+
+        # Cancel old subscription
+        if self._ha_sched_listener_unsub is not None:
+            self._ha_sched_listener_unsub()
+            self._ha_sched_listener_unsub = None
+
+        self._ha_sched_listener_entities = entity_ids
+
+        if not entity_ids:
+            return
+
+        @callback
+        def _on_ha_sched_change(event: Event) -> None:
+            """Trigger immediate coordinator refresh on schedule/condition state change."""
+            new_state = event.data.get("new_state")
+            old_state = event.data.get("old_state")
+            new_s = new_state.state if new_state else None
+            old_s = old_state.state if old_state else None
+            if new_s == old_s:
+                return  # attribute-only update, ignore
+            entity_id = event.data.get("entity_id")
+            _LOGGER.debug(
+                "IHC: HA schedule/condition entity %s changed %s→%s, triggering refresh",
+                entity_id, old_s, new_s,
+            )
+            self.hass.async_create_task(self.async_request_refresh())
+
+        self._ha_sched_listener_unsub = async_track_state_change_event(
+            self.hass, list(entity_ids), _on_ha_sched_change
+        )
+        _LOGGER.debug("IHC: Registered HA schedule listeners for %d entities", len(entity_ids))
+
     # ------------------------------------------------------------------
     # Roadmap 1.2 – Vacation assistant
     # ------------------------------------------------------------------
@@ -990,6 +1051,7 @@ class IHCCoordinator(
             self._prefill_window_states()
             self._prefill_last_sent_temps()
             self._setup_window_listeners()
+            self._setup_ha_schedule_listeners()
             await self._async_startup_presence_sync()
 
         # Expire any boost timers
