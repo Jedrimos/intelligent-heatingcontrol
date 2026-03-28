@@ -2509,6 +2509,55 @@ class IHCPanel extends HTMLElement {
     });
 
     // ── HA Schedules (schedule.* entities) ────────────────────────────────
+    // Build live status HTML for configured HA schedules
+    const haSchedsConfig = room.ha_schedules || [];
+    const MODE_LABELS = { comfort: "☀️ Komfort", eco: "🌿 Eco", sleep: "🌙 Schlaf", away: "🚶 Abwesend" };
+    const activeSchedEntity = room.ha_schedule_entity || "";  // currently winning schedule entity
+    const currentSource = room.source || "";
+
+    const haStatusRows = haSchedsConfig.map(s => {
+      const schedState = this.hass.states[s.entity];
+      const schedOn = schedState?.state === "on";
+      const condEntity = s.condition_entity || "";
+      const condExpected = s.condition_state || "on";
+      const condMet = !condEntity || (this.hass.states[condEntity]?.state === condExpected);
+      const isWinning = schedOn && condMet && s.entity === activeSchedEntity;
+      const condState = condEntity ? this.hass.states[condEntity]?.state : null;
+
+      const schedDot = schedOn
+        ? `<span style="color:#66bb6a;font-weight:700">● AN</span>`
+        : `<span style="color:#9e9e9e">● AUS</span>`;
+      const condBadge = condEntity
+        ? `<span style="font-size:11px;color:${condMet ? "#66bb6a" : "#ef5350"}">${condMet ? "✅" : "❌"} ${condEntity.split(".")[1]} = ${condExpected} <span style="opacity:.6">(ist: ${condState ?? "?"})</span></span>`
+        : `<span style="font-size:11px;color:var(--secondary-text-color)">Immer aktiv</span>`;
+      const winBadge = isWinning
+        ? `<span style="background:#1b5e20;color:#a5d6a7;font-size:10px;padding:2px 6px;border-radius:10px;font-weight:700;margin-left:6px">▶ AKTIV</span>`
+        : "";
+
+      return `
+        <div style="padding:8px 10px;border-radius:8px;margin-bottom:6px;
+          background:${isWinning ? "rgba(27,94,32,0.15)" : "var(--secondary-background-color)"};
+          border:1px solid ${isWinning ? "#388e3c" : "var(--divider-color)"}">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            ${schedDot}
+            <span style="font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.entity}</span>
+            <span style="font-size:11px;color:var(--secondary-text-color);flex-shrink:0">${MODE_LABELS[s.mode] || s.mode}</span>
+            ${winBadge}
+          </div>
+          <div style="margin-top:4px">${condBadge}</div>
+        </div>`;
+    }).join("");
+
+    const haStatusSection = haSchedsConfig.length > 0 ? `
+      <div style="margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">📡 Aktueller Status</div>
+        ${haStatusRows}
+        ${currentSource.startsWith("ha_schedule_") ? `
+          <div style="font-size:11px;color:var(--secondary-text-color);padding:6px 10px;background:var(--secondary-background-color);border-radius:6px;margin-top:4px">
+            ⏸ Kein Zeitplan aktiv → Fallback: <strong>${MODE_LABELS[room.ha_schedule_off_mode] || room.ha_schedule_off_mode}</strong>
+          </div>` : ""}
+      </div>` : "";
+
     const haSchedCard = document.createElement("div");
     haSchedCard.className = "card";
     haSchedCard.style.marginTop = "16px";
@@ -2518,6 +2567,7 @@ class IHCPanel extends HTMLElement {
         Verbindet <strong>schedule.*</strong>-Helfer mit diesem Zimmer. Wenn aktiv, übernimmt IHC den
         gewählten Temperaturmodus. Erstellen: HA → Einstellungen → Helfer → Zeitplan.
       </p>
+      ${haStatusSection}
       <div class="settings-item" style="margin-bottom:14px">
         <label style="font-weight:600">Fallback wenn kein HA-Zeitplan aktiv</label>
         <select class="form-select" id="rs-ha-sched-off-mode" style="margin-top:4px">
@@ -2527,17 +2577,21 @@ class IHCPanel extends HTMLElement {
         </select>
         <span class="form-hint">Modus wenn kein schedule.* gerade eingeschaltet ist</span>
       </div>
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--secondary-text-color)">
-        Verknüpfte Zeitpläne
-      </div>
-      <div style="font-size:11px;color:var(--secondary-text-color);margin-bottom:6px">
-        Entität (schedule.*) + Modus · Zeile 2: Bedingung + Zustand (optional)
-      </div>
-      <div id="rs-ha-sched-list"></div>
-      <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;gap:6px">
-        <button class="btn btn-secondary" id="rs-add-ha-sched">+ Zeitplan hinzufügen</button>
-        <button class="btn btn-primary"   id="rs-save-ha-sched">💾 HA Zeitpläne speichern</button>
-      </div>`;
+      <details style="margin-bottom:10px">
+        <summary style="font-size:12px;font-weight:600;cursor:pointer;color:var(--secondary-text-color);padding:4px 0">
+          ⚙️ Zeitpläne bearbeiten (${haSchedsConfig.length} konfiguriert)
+        </summary>
+        <div style="margin-top:10px">
+          <div style="font-size:11px;color:var(--secondary-text-color);margin-bottom:6px">
+            Entität (schedule.*) + Modus · Zeile 2: Bedingung + Zustand (optional)
+          </div>
+          <div id="rs-ha-sched-list"></div>
+          <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;gap:6px">
+            <button class="btn btn-secondary" id="rs-add-ha-sched">+ Zeitplan hinzufügen</button>
+            <button class="btn btn-primary"   id="rs-save-ha-sched">💾 HA Zeitpläne speichern</button>
+          </div>
+        </div>
+      </details>`;
     container.appendChild(haSchedCard);
 
     // Pre-populate existing HA schedule rows

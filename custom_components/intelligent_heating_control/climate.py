@@ -267,6 +267,8 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "sleep_max_temp": room_cfg.get("sleep_max_temp", 19.0),
             "away_max_temp": room_cfg.get("away_max_temp", 18.0),
             "ha_schedule_off_mode": room_cfg.get(CONF_HA_SCHEDULE_OFF_MODE, DEFAULT_HA_SCHEDULE_OFF_MODE),
+            "ha_schedule_entity": d.get("ha_schedule_entity", ""),
+            "ha_schedule_mode": d.get("ha_schedule_mode", ""),
             # Effective computed temps (from coordinator runtime data)
             "comfort_temp_eff": d.get("comfort_temp_eff"),
             "eco_temp_eff": d.get("eco_temp_eff"),
