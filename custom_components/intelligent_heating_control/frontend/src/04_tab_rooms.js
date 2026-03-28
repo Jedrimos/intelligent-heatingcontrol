@@ -746,8 +746,8 @@
       <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--secondary-text-color)">
         Verknüpfte Zeitpläne
       </div>
-      <div style="font-size:11px;color:var(--secondary-text-color);margin-bottom:8px;display:grid;grid-template-columns:1fr auto 1fr auto auto;gap:4px;align-items:center">
-        <span>Entität (schedule.*)</span><span>Modus</span><span>Bedingung (optional)</span><span>Zustand</span><span></span>
+      <div style="font-size:11px;color:var(--secondary-text-color);margin-bottom:6px">
+        Entität (schedule.*) + Modus · Zeile 2: Bedingung + Zustand (optional)
       </div>
       <div id="rs-ha-sched-list"></div>
       <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;gap:6px">
