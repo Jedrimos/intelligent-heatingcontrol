@@ -1505,7 +1505,7 @@ class IHCPanel extends HTMLElement {
       if (room.anomaly === "sensor_stuck") alerts.push(`<div class="room-alert alert-danger">⚠️ Sensor konstant – bitte prüfen</div>`);
       if (room.anomaly === "temp_drop")    alerts.push(`<div class="room-alert alert-warn">⚠️ Starker Temperaturabfall</div>`);
       if (room.mold && room.mold.risk)     alerts.push(`<div class="room-alert alert-info">💧 Schimmelrisiko – ${room.mold.humidity}%${room.mold.dew_point != null ? ` · Taupunkt ${room.mold.dew_point}°C` : ""}</div>`);
-      if (room.trv_low_battery)            alerts.push(`<div class="room-alert alert-danger">🔋 TRV-Batterie schwach (${room.trv_min_battery}%) – bitte tauschen</div>`);
+      if (room.trv_low_battery)            alerts.push(`<div class="room-alert alert-danger">🔋 TRV-Batterie schwach (${room.trv_min_battery ?? '?'}%) – bitte tauschen</div>`);
       const v = room.ventilation;
       if (v && v.level !== "none") {
         const icons = { urgent: "🪟❗", recommended: "🪟", possible: "🌬️" };
@@ -2365,6 +2365,13 @@ class IHCPanel extends HTMLElement {
         trv_valve_demand:         container.querySelector("#rs-trv-valve-demand")?.checked === true,
         trv_min_send_interval:    parseInt(container.querySelector("#rs-trv-min-send-interval")?.value, 10) || 0,
         trv_calibrations:         (() => { try { const v = container.querySelector("#rs-trv-calibrations")?.value.trim(); return v ? JSON.parse(v) : {}; } catch { return {}; } })(),
+        presence_sensor:          container.querySelector("#rs-presence-sensor")?.value.trim() || "",
+        presence_sensor_on_delay: parseInt(container.querySelector("#rs-presence-sensor-on-delay")?.value, 10) || 0,
+        presence_sensor_off_delay: parseInt(container.querySelector("#rs-presence-sensor-off-delay")?.value, 10) || 0,
+        window_open_temp:         parseFloat(container.querySelector("#rs-window-open-temp")?.value) || 0,
+        room_temp_threshold:      parseFloat(container.querySelector("#rs-room-temp-threshold")?.value) || 0,
+        comfort_temp_entity:      container.querySelector("#rs-comfort-temp-entity")?.value.trim() || "",
+        eco_temp_entity:          container.querySelector("#rs-eco-temp-entity")?.value.trim() || "",
       });
       this._toast(`✓ ${room.name} gespeichert`);
     });
@@ -3438,6 +3445,15 @@ class IHCPanel extends HTMLElement {
               <input type="number" class="form-input" id="summer-threshold" min="10" max="30" step="0.5" value="${a.summer_threshold ?? 18}">
               <span class="form-hint">Ab dieser Außentemperatur wird die Heizung gesperrt (Sommerautomatik muss aktiviert sein).</span>
             </div>
+            <div class="settings-item" style="grid-column:1/-1">
+              <label>Heizperiode-Entity
+                ${g.heating_period_active === false ? `<span class="badge" style="background:#ff9800;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px">⏸ Inaktiv</span>` : g.heating_period_active ? `<span class="badge" style="background:#4caf50;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px">✓ Aktiv</span>` : ""}
+              </label>
+              <input type="text" class="form-input full" id="s-heating-period-entity"
+                value="${a.heating_period_entity || ''}" placeholder="input_boolean.heizperiode"
+                data-ep-domains="input_boolean,binary_sensor" autocomplete="off">
+              <span class="form-hint">Optional: Entity (input_boolean.* oder binary_sensor.*) die die Heizperiode steuert. OFF = Heizperiode inaktiv → Heizung gesperrt wie im Sommer-Modus.</span>
+            </div>
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="save-temp-settings">💾 Temperaturen speichern</button>
@@ -4146,6 +4162,7 @@ class IHCPanel extends HTMLElement {
         summer_mode_enabled:      content.querySelector("#summer-enabled").value === "true",
         summer_threshold:         sumT,
         off_use_frost_protection: content.querySelector("#off-use-frost").value === "true",
+        heating_period_entity:    content.querySelector("#s-heating-period-entity")?.value.trim() || "",
       });
       this._toast("✓ Temperatur-Einstellungen gespeichert");
     });

@@ -581,6 +581,13 @@
         trv_valve_demand:         container.querySelector("#rs-trv-valve-demand")?.checked === true,
         trv_min_send_interval:    parseInt(container.querySelector("#rs-trv-min-send-interval")?.value, 10) || 0,
         trv_calibrations:         (() => { try { const v = container.querySelector("#rs-trv-calibrations")?.value.trim(); return v ? JSON.parse(v) : {}; } catch { return {}; } })(),
+        presence_sensor:          container.querySelector("#rs-presence-sensor")?.value.trim() || "",
+        presence_sensor_on_delay: parseInt(container.querySelector("#rs-presence-sensor-on-delay")?.value, 10) || 0,
+        presence_sensor_off_delay: parseInt(container.querySelector("#rs-presence-sensor-off-delay")?.value, 10) || 0,
+        window_open_temp:         parseFloat(container.querySelector("#rs-window-open-temp")?.value) || 0,
+        room_temp_threshold:      parseFloat(container.querySelector("#rs-room-temp-threshold")?.value) || 0,
+        comfort_temp_entity:      container.querySelector("#rs-comfort-temp-entity")?.value.trim() || "",
+        eco_temp_entity:          container.querySelector("#rs-eco-temp-entity")?.value.trim() || "",
       });
       this._toast(`✓ ${room.name} gespeichert`);
     });

@@ -143,6 +143,15 @@
               <input type="number" class="form-input" id="summer-threshold" min="10" max="30" step="0.5" value="${a.summer_threshold ?? 18}">
               <span class="form-hint">Ab dieser Außentemperatur wird die Heizung gesperrt (Sommerautomatik muss aktiviert sein).</span>
             </div>
+            <div class="settings-item" style="grid-column:1/-1">
+              <label>Heizperiode-Entity
+                ${g.heating_period_active === false ? `<span class="badge" style="background:#ff9800;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px">⏸ Inaktiv</span>` : g.heating_period_active ? `<span class="badge" style="background:#4caf50;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px">✓ Aktiv</span>` : ""}
+              </label>
+              <input type="text" class="form-input full" id="s-heating-period-entity"
+                value="${a.heating_period_entity || ''}" placeholder="input_boolean.heizperiode"
+                data-ep-domains="input_boolean,binary_sensor" autocomplete="off">
+              <span class="form-hint">Optional: Entity (input_boolean.* oder binary_sensor.*) die die Heizperiode steuert. OFF = Heizperiode inaktiv → Heizung gesperrt wie im Sommer-Modus.</span>
+            </div>
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="save-temp-settings">💾 Temperaturen speichern</button>
@@ -851,6 +860,7 @@
         summer_mode_enabled:      content.querySelector("#summer-enabled").value === "true",
         summer_threshold:         sumT,
         off_use_frost_protection: content.querySelector("#off-use-frost").value === "true",
+        heating_period_entity:    content.querySelector("#s-heating-period-entity")?.value.trim() || "",
       });
       this._toast("✓ Temperatur-Einstellungen gespeichert");
     });
