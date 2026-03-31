@@ -190,10 +190,8 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
         mode = self.coordinator.get_room_mode(self._room_id)
         if mode == ROOM_MODE_OFF:
             return HVACMode.OFF
-        # Window open → show climate as OFF (no heating while ventilating)
-        d = self._room_data
-        if d and d.get("window_open"):
-            return HVACMode.OFF
+        # Window open → keep HEAT mode (OFF would look identical to "room disabled").
+        # Window state is shown via hvac_action=IDLE + window_open attribute.
         return HVACMode.HEAT
 
     @property
@@ -205,23 +203,36 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             return HVACAction.OFF
         if d.get("room_mode") == ROOM_MODE_OFF:
             return HVACAction.OFF
-        # Window open → IDLE (not heating)
+        # Window open → IDLE (heating paused while ventilating)
         if d.get("window_open"):
             return HVACAction.IDLE
+
         demand = d.get("demand", 0)
+        current_temp = d.get("current_temp")
+        target_temp = d.get("target_temp")
         data = self.coordinator.data
         controller_mode = (data or {}).get("controller_mode", "switch")
+
         if controller_mode == "trv":
-            # In TRV mode there is no central heating switch – each TRV heats independently.
-            # Show HEATING whenever the room has active demand (> 0) or a TRV reports heating.
-            if demand > 0 or d.get("trv_any_heating", False):
+            # TRV mode: demand > 0, TRV reports heating action, or valve physically open.
+            # Valve > 8% is the most reliable signal – TRV's own controller has decided to heat.
+            trv_avg_valve = d.get("trv_avg_valve")
+            if (demand > 0
+                    or d.get("trv_any_heating", False)
+                    or (trv_avg_valve is not None and trv_avg_valve > 8)):
                 return HVACAction.HEATING
         else:
-            # Switch mode: show HEATING when the room has demand > 0.
-            # The central heating switch (heating_active) controls the boiler but is a
-            # system-level decision – a room calling for heat should show HEATING even if
-            # the boiler threshold hasn't been reached yet (prevents confusing IDLE display).
+            # Switch mode: show HEATING when the room demands heat.
+            # Also show HEATING when the central boiler is active and the room is still
+            # below its target – the room IS being heated even if demand just dropped to 0
+            # (safety gate: demand=0 when current_temp >= target - deadband).
+            heating_active = bool((data or {}).get("heating_active", False))
             if demand > 0:
+                return HVACAction.HEATING
+            if (heating_active
+                    and current_temp is not None
+                    and target_temp is not None
+                    and current_temp < target_temp):
                 return HVACAction.HEATING
             if data and data.get("cooling_active"):
                 return HVACAction.COOLING
