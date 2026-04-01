@@ -1388,66 +1388,8 @@ class IHCPanel extends HTMLElement {
   }
 
   // ── HA Schedule row helpers ─────────────────────────────────────────────
-
-  /** Renders a single HA schedule row and returns its element. */
-  _makeHaSchedRow(entry = {}) {
-    const row = document.createElement("div");
-    row.className = "ha-sched-row";
-    row.style.cssText = "border:1px solid var(--divider-color);border-radius:8px;padding:8px;margin-bottom:8px";
-    row.innerHTML = `
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-        <input type="text" class="form-input hs-entity" placeholder="schedule.zimmer"
-          data-ep-domains="schedule" autocomplete="off" value="${entry.entity || ''}"
-          style="flex:1;min-width:0">
-        <select class="form-select hs-mode" style="width:110px;flex-shrink:0">
-          <option value="comfort" ${(entry.mode||'comfort')==='comfort'?'selected':''}>☀️ Komfort</option>
-          <option value="eco"     ${entry.mode==='eco'    ?'selected':''}>🌿 Eco</option>
-          <option value="sleep"   ${entry.mode==='sleep'  ?'selected':''}>🌙 Schlaf</option>
-          <option value="away"    ${entry.mode==='away'   ?'selected':''}>🚶 Abwesend</option>
-        </select>
-        <button class="btn btn-danger btn-icon hs-remove" title="Entfernen" style="flex-shrink:0">✕</button>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <input type="text" class="form-input hs-cond" placeholder="Bedingung (optional, z.B. binary_sensor.xyz)"
-          data-ep-domains="input_boolean,binary_sensor,person,device_tracker" autocomplete="off"
-          value="${entry.condition_entity || ''}" style="flex:1;min-width:0;font-size:12px">
-        <input type="text" class="form-input hs-cond-state" placeholder="on"
-          style="width:55px;flex-shrink:0;font-size:12px" value="${entry.condition_state || 'on'}">
-      </div>`;
-    row.querySelector(".hs-remove").addEventListener("click", () => row.remove());
-    // Attach entity pickers after row is appended (caller must ensure DOM is ready)
-    setTimeout(() => this._attachEntityPickers(row), 0);
-    return row;
-  }
-
-  /** Attaches the "add" button for HA schedule rows. Call after modal renders. */
-  _bindHaSchedAdder(existingEntries, listId, addBtnId) {
-    setTimeout(() => {
-      const list = this.shadowRoot.querySelector(`#${listId}`);
-      if (!list) return;
-      // Render pre-existing entries
-      existingEntries.forEach(entry => list.appendChild(this._makeHaSchedRow(entry)));
-      const btn = this.shadowRoot.querySelector(`#${addBtnId}`);
-      if (btn) btn.addEventListener("click", () => list.appendChild(this._makeHaSchedRow()));
-    }, 50);
-  }
-
-  /** Collects HA schedule rows from a modal container into an array. */
-  _collectHaScheduleRows(modal) {
-    return [...modal.querySelectorAll(".ha-sched-row")]
-      .map(row => {
-        const entity = row.querySelector(".hs-entity").value.trim();
-        if (!entity) return null;
-        const entry = { entity, mode: row.querySelector(".hs-mode").value };
-        const cond = row.querySelector(".hs-cond").value.trim();
-        if (cond) {
-          entry.condition_entity = cond;
-          entry.condition_state  = row.querySelector(".hs-cond-state").value.trim() || "on";
-        }
-        return entry;
-      })
-      .filter(Boolean);
-  }
+  // NOTE: _makeHaSchedRow, _bindHaSchedAdder, _collectHaScheduleRows are
+  // defined in 08_modals.js (authoritative versions). Do not duplicate here.
 
 
 // === 03_tab_dashboard.js ===
@@ -2415,6 +2357,9 @@ class IHCPanel extends HTMLElement {
         room_temp_threshold:      parseFloat(container.querySelector("#rs-room-temp-threshold")?.value) || 0,
         comfort_temp_entity:      container.querySelector("#rs-comfort-temp-entity")?.value.trim() || "",
         eco_temp_entity:          container.querySelector("#rs-eco-temp-entity")?.value.trim() || "",
+        aggressive_mode_enabled:  container.querySelector("#rs-aggressive-mode")?.checked === true,
+        aggressive_mode_range:    parseFloat(container.querySelector("#rs-aggressive-range")?.value ?? "2") || 2.0,
+        aggressive_mode_offset:   parseFloat(container.querySelector("#rs-aggressive-offset")?.value ?? "3") || 3.0,
       });
       this._toast(`✓ ${room.name} gespeichert`);
     });
@@ -3061,9 +3006,9 @@ class IHCPanel extends HTMLElement {
         <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:12px">
           Gleitender Durchschnitt der Heizanforderung nach Wochentag und Uhrzeit (EMA, lernt über mehrere Wochen).
         </div>
-        <div id="heatmap-grid-${room.room_id}"></div>`;
+        <div id="hm-${room.room_id}"></div>`;
       container.appendChild(heatmapCard);
-      const gridContainer = heatmapCard.querySelector(`#heatmap-grid-${room.room_id}`);
+      const gridContainer = heatmapCard.querySelector(`#hm-${room.room_id}`);
       gridContainer.innerHTML = this._renderDemandHeatmapGrid(room.demand_heatmap);
     }
   }

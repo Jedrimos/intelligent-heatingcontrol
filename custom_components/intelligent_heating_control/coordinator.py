@@ -1417,7 +1417,7 @@ class IHCCoordinator(
             demand_now = float(rdata.get("demand", 0) or 0)
             old = self._demand_heatmap[room_id][_weekday][_hour]
             self._demand_heatmap[room_id][_weekday][_hour] = round(0.9 * old + 0.1 * demand_now, 1)
-            rdata["demand_heatmap"] = self._demand_heatmap[room_id]
+            rdata["demand_heatmap"] = [list(day) for day in self._demand_heatmap[room_id]]
 
         # Determine if system OFF should turn valves off completely or frost-protect
         off_use_frost = bool(cfg.get(CONF_OFF_USE_FROST_PROTECTION, DEFAULT_OFF_USE_FROST_PROTECTION))

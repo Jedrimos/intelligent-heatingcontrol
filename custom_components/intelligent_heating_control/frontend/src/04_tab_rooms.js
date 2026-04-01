@@ -588,6 +588,9 @@
         room_temp_threshold:      parseFloat(container.querySelector("#rs-room-temp-threshold")?.value) || 0,
         comfort_temp_entity:      container.querySelector("#rs-comfort-temp-entity")?.value.trim() || "",
         eco_temp_entity:          container.querySelector("#rs-eco-temp-entity")?.value.trim() || "",
+        aggressive_mode_enabled:  container.querySelector("#rs-aggressive-mode")?.checked === true,
+        aggressive_mode_range:    parseFloat(container.querySelector("#rs-aggressive-range")?.value ?? "2") || 2.0,
+        aggressive_mode_offset:   parseFloat(container.querySelector("#rs-aggressive-offset")?.value ?? "3") || 3.0,
       });
       this._toast(`✓ ${room.name} gespeichert`);
     });
@@ -1234,9 +1237,9 @@
         <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:12px">
           Gleitender Durchschnitt der Heizanforderung nach Wochentag und Uhrzeit (EMA, lernt über mehrere Wochen).
         </div>
-        <div id="heatmap-grid-${room.room_id}"></div>`;
+        <div id="hm-${room.room_id}"></div>`;
       container.appendChild(heatmapCard);
-      const gridContainer = heatmapCard.querySelector(`#heatmap-grid-${room.room_id}`);
+      const gridContainer = heatmapCard.querySelector(`#hm-${room.room_id}`);
       gridContainer.innerHTML = this._renderDemandHeatmapGrid(room.demand_heatmap);
     }
   }
