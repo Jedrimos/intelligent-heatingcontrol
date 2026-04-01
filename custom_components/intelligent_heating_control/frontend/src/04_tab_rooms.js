@@ -822,13 +822,13 @@
     const currentSource = room.source || "";
 
     const haStatusRows = haSchedsConfig.map(s => {
-      const schedState = this.hass.states[s.entity];
+      const schedState = this._hass?.states[s.entity];
       const schedOn = schedState?.state === "on";
       const condEntity = s.condition_entity || "";
       const condExpected = s.condition_state || "on";
-      const condMet = !condEntity || (this.hass.states[condEntity]?.state === condExpected);
+      const condMet = !condEntity || (this._hass?.states[condEntity]?.state === condExpected);
       const isWinning = schedOn && condMet && s.entity === activeSchedEntity;
-      const condState = condEntity ? this.hass.states[condEntity]?.state : null;
+      const condState = condEntity ? this._hass?.states[condEntity]?.state : null;
 
       const schedDot = schedOn
         ? `<span style="color:#66bb6a;font-weight:700">● AN</span>`
@@ -947,7 +947,7 @@
     const isGroupActive = (sched) => {
       const condEntity = sched.condition_entity || "";
       if (!condEntity) return true;
-      const state = this.hass.states[condEntity];
+      const state = this._hass?.states[condEntity];
       const expected = sched.condition_state || "on";
       return state && state.state === expected;
     };
