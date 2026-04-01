@@ -191,6 +191,7 @@
       outdoor_humidity:          a.outdoor_humidity != null ? parseFloat(a.outdoor_humidity) : null,
       static_energy_price:       a.static_energy_price != null ? parseFloat(a.static_energy_price) : null,
       boiler_kw:                 a.boiler_kw != null ? parseFloat(a.boiler_kw) : null,
+      groups:                    a.groups || [],
     };
   }
 
@@ -483,6 +484,48 @@
         }
       });
     }, 30);
+  }
+
+  // ── v1.6 Anforderungs-Heatmap helper ──────────────────────────────────────
+
+  /**
+   * Renders a 7×24 demand heatmap grid.
+   * @param {Array} heatmap  7×24 float grid (weekday × hour, 0-100)
+   * @param {string} title   optional heading
+   * @returns {string} HTML string
+   */
+  _renderDemandHeatmapGrid(heatmap, title = "") {
+    if (!heatmap || heatmap.length !== 7) return "";
+    const WDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    const demColor = v => {
+      if (!v || v < 1) return "var(--secondary-background-color,#f5f5f5)";
+      const t = Math.min(1, v / 100);
+      const r = Math.round(30  + t * 200);
+      const g = Math.round(100 - t * 60);
+      const b = Math.round(200 - t * 180);
+      return `rgb(${r},${g},${b})`;
+    };
+    const hourHeaders = Array.from({length: 24}, (_, h) =>
+      `<div style="font-size:8px;text-align:center;color:var(--secondary-text-color);flex:1;min-width:0">${h % 3 === 0 ? h + "" : ""}</div>`
+    ).join("");
+    const rows = heatmap.map((day, di) => {
+      const cells = day.map((v, h) =>
+        `<div title="${WDAYS[di]} ${h}:00 – ${Math.round(v)}%" style="flex:1;height:18px;background:${demColor(v)};border-radius:2px;margin:1px;min-width:0"></div>`
+      ).join("");
+      return `<div style="display:flex;align-items:center;gap:0;margin-bottom:1px">
+        <div style="width:22px;font-size:9px;color:var(--secondary-text-color);flex-shrink:0">${WDAYS[di]}</div>
+        <div style="display:flex;flex:1;gap:0">${cells}</div>
+      </div>`;
+    }).join("");
+    return `
+      ${title ? `<div style="font-size:11px;font-weight:700;margin-bottom:6px;color:var(--secondary-text-color)">${title}</div>` : ""}
+      <div style="display:flex;margin-left:22px;margin-bottom:2px">${hourHeaders}</div>
+      ${rows}
+      <div style="margin-top:4px;display:flex;gap:6px;align-items:center;font-size:10px;color:var(--secondary-text-color)">
+        <span>0%</span>
+        <div style="flex:1;height:5px;border-radius:3px;background:linear-gradient(to right,rgb(30,100,200),rgb(200,80,20),rgb(230,40,20))"></div>
+        <span>100%</span>
+      </div>`;
   }
 
   // ── HA Schedule row helpers ─────────────────────────────────────────────

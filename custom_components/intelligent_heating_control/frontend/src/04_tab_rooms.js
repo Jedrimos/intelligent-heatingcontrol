@@ -1223,5 +1223,21 @@
         </div>
         <div style="font-size:11px;color:var(--secondary-text-color);padding-top:4px">Stündliche Messung · max. 7 Tage Verlauf · Ziel-Linie orange gestrichelt</div>
       </div>`;
+
+    // v1.6 – Anforderungs-Heatmap pro Zimmer
+    if (room.demand_heatmap && room.demand_heatmap.length === 7) {
+      const heatmapCard = document.createElement("div");
+      heatmapCard.className = "card";
+      heatmapCard.style.marginTop = "16px";
+      heatmapCard.innerHTML = `
+        <div class="card-title">🔥 Anforderungs-Heatmap</div>
+        <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:12px">
+          Gleitender Durchschnitt der Heizanforderung nach Wochentag und Uhrzeit (EMA, lernt über mehrere Wochen).
+        </div>
+        <div id="heatmap-grid-${room.room_id}"></div>`;
+      container.appendChild(heatmapCard);
+      const gridContainer = heatmapCard.querySelector(`#heatmap-grid-${room.room_id}`);
+      gridContainer.innerHTML = this._renderDemandHeatmapGrid(room.demand_heatmap);
+    }
   }
 

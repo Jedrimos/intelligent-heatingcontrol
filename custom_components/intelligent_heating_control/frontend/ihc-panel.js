@@ -1050,6 +1050,7 @@ class IHCPanel extends HTMLElement {
       outdoor_humidity:          a.outdoor_humidity != null ? parseFloat(a.outdoor_humidity) : null,
       static_energy_price:       a.static_energy_price != null ? parseFloat(a.static_energy_price) : null,
       boiler_kw:                 a.boiler_kw != null ? parseFloat(a.boiler_kw) : null,
+      groups:                    a.groups || [],
     };
   }
 
@@ -1342,6 +1343,48 @@ class IHCPanel extends HTMLElement {
         }
       });
     }, 30);
+  }
+
+  // ── v1.6 Anforderungs-Heatmap helper ──────────────────────────────────────
+
+  /**
+   * Renders a 7×24 demand heatmap grid.
+   * @param {Array} heatmap  7×24 float grid (weekday × hour, 0-100)
+   * @param {string} title   optional heading
+   * @returns {string} HTML string
+   */
+  _renderDemandHeatmapGrid(heatmap, title = "") {
+    if (!heatmap || heatmap.length !== 7) return "";
+    const WDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    const demColor = v => {
+      if (!v || v < 1) return "var(--secondary-background-color,#f5f5f5)";
+      const t = Math.min(1, v / 100);
+      const r = Math.round(30  + t * 200);
+      const g = Math.round(100 - t * 60);
+      const b = Math.round(200 - t * 180);
+      return `rgb(${r},${g},${b})`;
+    };
+    const hourHeaders = Array.from({length: 24}, (_, h) =>
+      `<div style="font-size:8px;text-align:center;color:var(--secondary-text-color);flex:1;min-width:0">${h % 3 === 0 ? h + "" : ""}</div>`
+    ).join("");
+    const rows = heatmap.map((day, di) => {
+      const cells = day.map((v, h) =>
+        `<div title="${WDAYS[di]} ${h}:00 – ${Math.round(v)}%" style="flex:1;height:18px;background:${demColor(v)};border-radius:2px;margin:1px;min-width:0"></div>`
+      ).join("");
+      return `<div style="display:flex;align-items:center;gap:0;margin-bottom:1px">
+        <div style="width:22px;font-size:9px;color:var(--secondary-text-color);flex-shrink:0">${WDAYS[di]}</div>
+        <div style="display:flex;flex:1;gap:0">${cells}</div>
+      </div>`;
+    }).join("");
+    return `
+      ${title ? `<div style="font-size:11px;font-weight:700;margin-bottom:6px;color:var(--secondary-text-color)">${title}</div>` : ""}
+      <div style="display:flex;margin-left:22px;margin-bottom:2px">${hourHeaders}</div>
+      ${rows}
+      <div style="margin-top:4px;display:flex;gap:6px;align-items:center;font-size:10px;color:var(--secondary-text-color)">
+        <span>0%</span>
+        <div style="flex:1;height:5px;border-radius:3px;background:linear-gradient(to right,rgb(30,100,200),rgb(200,80,20),rgb(230,40,20))"></div>
+        <span>100%</span>
+      </div>`;
   }
 
   // ── HA Schedule row helpers ─────────────────────────────────────────────
@@ -3007,6 +3050,22 @@ class IHCPanel extends HTMLElement {
         </div>
         <div style="font-size:11px;color:var(--secondary-text-color);padding-top:4px">Stündliche Messung · max. 7 Tage Verlauf · Ziel-Linie orange gestrichelt</div>
       </div>`;
+
+    // v1.6 – Anforderungs-Heatmap pro Zimmer
+    if (room.demand_heatmap && room.demand_heatmap.length === 7) {
+      const heatmapCard = document.createElement("div");
+      heatmapCard.className = "card";
+      heatmapCard.style.marginTop = "16px";
+      heatmapCard.innerHTML = `
+        <div class="card-title">🔥 Anforderungs-Heatmap</div>
+        <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:12px">
+          Gleitender Durchschnitt der Heizanforderung nach Wochentag und Uhrzeit (EMA, lernt über mehrere Wochen).
+        </div>
+        <div id="heatmap-grid-${room.room_id}"></div>`;
+      container.appendChild(heatmapCard);
+      const gridContainer = heatmapCard.querySelector(`#heatmap-grid-${room.room_id}`);
+      gridContainer.innerHTML = this._renderDemandHeatmapGrid(room.demand_heatmap);
+    }
   }
 
 
@@ -3262,6 +3321,27 @@ class IHCPanel extends HTMLElement {
         </div>
       </details>` : ""}
     `;
+
+    // ── v1.6 Anforderungs-Heatmap (alle Zimmer) ────────────────────────────
+    const roomsWithHeatmap = roomList.filter(r => r.demand_heatmap && r.demand_heatmap.length === 7);
+    if (roomsWithHeatmap.length > 0) {
+      const heatmapCard = document.createElement("details");
+      heatmapCard.className = "ihc-card";
+      heatmapCard.innerHTML = `
+        <summary><span class="ihc-card-title">🔥 Anforderungs-Heatmap</span></summary>
+        <div class="ihc-card-body">
+          <p style="font-size:12px;color:var(--secondary-text-color);margin:0 0 12px">
+            Zeitbasiertes Heizprofil pro Zimmer – gleitender Durchschnitt (EMA) über mehrere Wochen.
+            Blau = niedrige, Rot = hohe Anforderung.
+          </p>
+          ${roomsWithHeatmap.map(r =>
+            `<div style="margin-bottom:16px">
+              ${this._renderDemandHeatmapGrid(r.demand_heatmap, r.name)}
+            </div>`
+          ).join("")}
+        </div>`;
+      content.appendChild(heatmapCard);
+    }
 
     const setSystemModeBtn = content.querySelector("#diag-set-system-mode");
     if (setSystemModeBtn) {
@@ -4566,8 +4646,152 @@ class IHCPanel extends HTMLElement {
       _updateModeVisibility(e.target.value);
     });
 
+    // ── v1.7 Heizgruppen ────────────────────────────────────────────────────
+    this._renderGroupsSection(content);
+
     // Attach HA-style entity pickers to all entity inputs
     this._attachEntityPickers(content);
+  }
+
+  // ── v1.7 Heizgruppen: Render-Methode ────────────────────────────────────────
+
+  _renderGroupsSection(parentContent) {
+    const groups = this._getGlobal().groups || [];
+    const rooms  = this._getRoomData();
+    const roomList = Object.values(rooms);
+
+    const groupsCard = document.createElement("details");
+    groupsCard.className = "settings-section";
+    groupsCard.open = groups.length > 0;
+    groupsCard.innerHTML = `
+      <summary class="settings-section-title">👥 Heizgruppen</summary>
+      <div id="groups-body" style="padding-top:8px">
+        <p style="font-size:12px;color:var(--secondary-text-color);margin:0 0 12px">
+          Zusammenfassen von Zimmern zu Gruppen für schnelle Modus-Änderungen.
+          Ideal für Etagen, Wohnbereiche oder Schlafzimmer.
+        </p>
+        <div id="groups-list"></div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="add-group-btn">+ Gruppe hinzufügen</button>
+        </div>
+      </div>`;
+    parentContent.appendChild(groupsCard);
+
+    const groupsList = groupsCard.querySelector("#groups-list");
+
+    const renderGroups = () => {
+      const currentGroups = this._getGlobal().groups || [];
+      groupsList.innerHTML = currentGroups.length === 0
+        ? `<div style="color:var(--secondary-text-color);font-size:12px;padding:8px 0">Noch keine Gruppen.</div>`
+        : currentGroups.map(grp => {
+          const memberNames = (grp.group_rooms || [])
+            .map(id => rooms[Object.keys(rooms).find(eid => rooms[eid].room_id === id)]?.name || id)
+            .filter(Boolean).join(", ");
+          return `
+          <div class="card" style="margin-bottom:10px;padding:12px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600;font-size:14px;flex:1">${grp.group_name || "Gruppe"}</span>
+              <span style="font-size:11px;color:var(--secondary-text-color)">${(grp.group_rooms||[]).length} Zimmer</span>
+              <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px"
+                data-action="edit-group" data-group-id="${grp.group_id}">✏️ Bearbeiten</button>
+              <button class="btn btn-danger" style="font-size:11px;padding:3px 10px"
+                data-action="delete-group" data-group-id="${grp.group_id}">✕</button>
+            </div>
+            ${memberNames ? `<div style="font-size:11px;color:var(--secondary-text-color);margin-top:4px">🚪 ${memberNames}</div>` : ""}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+              ${["auto","comfort","eco","sleep","away","off"].map(m =>
+                `<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px"
+                  data-action="group-mode" data-group-id="${grp.group_id}" data-mode="${m}">${MODE_ICONS[m]||""} ${MODE_LABELS[m]||m}</button>`
+              ).join("")}
+            </div>
+          </div>`;
+        }).join("");
+
+      // Event delegation
+      groupsList.querySelectorAll("[data-action='group-mode']").forEach(btn => {
+        btn.addEventListener("click", () => {
+          this._callService("set_group_mode", {
+            group_id: btn.dataset.groupId,
+            mode: btn.dataset.mode,
+          });
+          this._toast(`✓ Gruppe: ${btn.dataset.mode}`);
+        });
+      });
+      groupsList.querySelectorAll("[data-action='delete-group']").forEach(btn => {
+        btn.addEventListener("click", () => {
+          this._showConfirmModal(
+            "Gruppe löschen?",
+            "Die Zimmer bleiben erhalten, nur die Gruppe wird entfernt.",
+            async () => {
+              await this._callService("remove_group", { group_id: btn.dataset.groupId });
+              this._toast("✓ Gruppe gelöscht");
+              setTimeout(() => this._renderTabContent(), 600);
+            }
+          );
+        });
+      });
+      groupsList.querySelectorAll("[data-action='edit-group']").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const grp = (this._getGlobal().groups || []).find(g => g.group_id === btn.dataset.groupId);
+          if (!grp) return;
+          this._showGroupEditModal(grp, roomList, () => setTimeout(() => this._renderTabContent(), 600));
+        });
+      });
+    };
+
+    renderGroups();
+
+    groupsCard.querySelector("#add-group-btn").addEventListener("click", () => {
+      this._showGroupEditModal(null, roomList, () => setTimeout(() => this._renderTabContent(), 600));
+    });
+  }
+
+  _showGroupEditModal(group, roomList, onSave) {
+    const isNew = !group;
+    const existingRooms = group?.group_rooms || [];
+    const roomCheckboxes = roomList.map(r => `
+      <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer">
+        <input type="checkbox" data-room-id="${r.room_id}" ${existingRooms.includes(r.room_id) ? "checked" : ""}>
+        <span>${r.name}</span>
+        <span style="font-size:10px;color:var(--secondary-text-color)">${r.current_temp != null ? r.current_temp + " °C" : ""}</span>
+      </label>`).join("");
+
+    this._showModal(`
+      <div class="modal-title">${isNew ? "➕ Neue Gruppe" : "✏️ Gruppe bearbeiten"}</div>
+      <div class="form-group">
+        <label class="form-label">Gruppenname</label>
+        <input type="text" class="form-input full" id="g-name"
+          value="${group?.group_name || ''}" placeholder="z.B. Erdgeschoss, Schlafzimmer" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Zimmer auswählen</label>
+        <div style="max-height:280px;overflow-y:auto;border:1px solid var(--divider-color);border-radius:6px;padding:8px">
+          ${roomCheckboxes || '<div style="color:var(--secondary-text-color);font-size:12px">Keine Zimmer konfiguriert.</div>'}
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="modal-confirm">${isNew ? "Gruppe erstellen" : "Speichern"}</button>
+        <button class="btn btn-secondary modal-close-btn">Abbrechen</button>
+      </div>
+    `, async () => {
+      const modal = this.shadowRoot.querySelector("#modal-root .modal");
+      const name = modal.querySelector("#g-name").value.trim();
+      if (!name) { this._toast("❌ Bitte Gruppenname eingeben"); return; }
+      const room_ids = [...modal.querySelectorAll("[data-room-id]:checked")].map(cb => cb.dataset.roomId);
+      if (isNew) {
+        await this._callService("add_group", { group_name: name, group_rooms: room_ids });
+        this._toast("✓ Gruppe erstellt");
+      } else {
+        await this._callService("update_group", {
+          group_id: group.group_id,
+          group_name: name,
+          group_rooms: room_ids,
+        });
+        this._toast("✓ Gruppe gespeichert");
+      }
+      this._closeModal();
+      if (onSave) onSave();
+    });
   }
 
 
@@ -4652,6 +4876,71 @@ class IHCPanel extends HTMLElement {
     });
 
     this._drawCurve(content);
+
+    // ── v1.7 Heizkurven-Simulation ─────────────────────────────────────────
+    const simCard = document.createElement("div");
+    simCard.className = "card";
+    simCard.style.marginTop = "16px";
+    simCard.innerHTML = `
+      <div class="card-title">🔬 Simulation – Was-Wenn?</div>
+      <p style="font-size:12px;color:var(--secondary-text-color);margin:0 0 12px">
+        Schieberegler für Außentemperatur → zeigt die berechnete Ziel-Temperatur laut aktueller Heizkurve.
+      </p>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+        <label style="font-size:13px;font-weight:600;min-width:120px">Außentemp:</label>
+        <input type="range" id="sim-outdoor" min="-20" max="25" step="0.5" value="0"
+          style="flex:1;min-width:160px;accent-color:var(--primary-color)">
+        <span id="sim-outdoor-val" style="font-size:15px;font-weight:700;min-width:50px;text-align:right">0 °C</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:8px">
+        <label style="font-size:13px;color:var(--secondary-text-color);min-width:120px">Ziel-Temperatur:</label>
+        <span id="sim-target-val" style="font-size:26px;font-weight:700;color:var(--primary-color)">—</span>
+      </div>
+      <div id="sim-room-offsets" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"></div>`;
+    content.appendChild(simCard);
+
+    const rooms = this._getRoomData();
+    const roomList = Object.values(rooms);
+
+    const calcCurveTemp = (outdoorTemp) => {
+      const pts = this._collectCurvePoints(content);
+      if (pts.length < 2) return null;
+      // Clamp to range
+      if (outdoorTemp <= pts[0].outdoor_temp) return pts[0].target_temp;
+      if (outdoorTemp >= pts[pts.length - 1].outdoor_temp) return pts[pts.length - 1].target_temp;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const lo = pts[i], hi = pts[i + 1];
+        if (outdoorTemp >= lo.outdoor_temp && outdoorTemp <= hi.outdoor_temp) {
+          const t = (outdoorTemp - lo.outdoor_temp) / (hi.outdoor_temp - lo.outdoor_temp);
+          return lo.target_temp + t * (hi.target_temp - lo.target_temp);
+        }
+      }
+      return null;
+    };
+
+    const updateSim = () => {
+      const outdoorVal = parseFloat(simCard.querySelector("#sim-outdoor").value);
+      simCard.querySelector("#sim-outdoor-val").textContent = outdoorVal.toFixed(1) + " °C";
+      const base = calcCurveTemp(outdoorVal);
+      if (base == null) { simCard.querySelector("#sim-target-val").textContent = "—"; return; }
+      simCard.querySelector("#sim-target-val").textContent = base.toFixed(1) + " °C";
+      // Show per-room effective target
+      const offsets = simCard.querySelector("#sim-room-offsets");
+      offsets.innerHTML = roomList.map(r => {
+        const offset = parseFloat(r.room_offset ?? 0);
+        const eff = (base + offset).toFixed(1);
+        return `<span style="font-size:11px;padding:3px 8px;border-radius:8px;background:var(--secondary-background-color);border:1px solid var(--divider-color)">
+          ${r.name}: <strong>${eff} °C</strong>${offset !== 0 ? ` <span style="color:var(--secondary-text-color)">(${offset > 0 ? "+" : ""}${offset})</span>` : ""}
+        </span>`;
+      }).join("");
+    };
+
+    simCard.querySelector("#sim-outdoor").addEventListener("input", updateSim);
+    // Recompute when curve points change
+    content.querySelectorAll(".curve-outdoor,.curve-target").forEach(inp =>
+      inp.addEventListener("input", updateSim)
+    );
+    updateSim();
   }
 
   _collectCurvePoints(content) {
