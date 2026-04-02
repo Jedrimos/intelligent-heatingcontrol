@@ -388,6 +388,8 @@ class IHCCoordinator(
 
         # Manual TRV override detection: track last IHC-set temperature per room
         self._last_ihc_set_temps: Dict[str, float] = {}  # room_id → last temp IHC intentionally set
+        # Reconnect guard: entities that were unavailable/unknown last cycle → skip override detection
+        self._trv_unavailable_entities: set = set()
 
         # Stuck-valve detection: entity_id → monotonic time when stuck condition first appeared
         self._trv_stuck_since: Dict[str, float] = {}
