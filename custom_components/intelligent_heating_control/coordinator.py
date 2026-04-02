@@ -753,7 +753,9 @@ class IHCCoordinator(
         sensor_id = room.get(CONF_PRESENCE_SENSOR, "")
         if not sensor_id:
             return None  # feature not configured for this room
-        room_id = room.get("id", sensor_id)
+        room_id = room.get(CONF_ROOM_ID, "")
+        if not room_id:
+            return None
         state = self.hass.states.get(sensor_id)
         if state is None:
             return None  # sensor unavailable → don't influence temp
