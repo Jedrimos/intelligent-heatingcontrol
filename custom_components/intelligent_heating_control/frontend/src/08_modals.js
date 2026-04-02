@@ -359,7 +359,8 @@
       </div>
     `, async () => {
       const modal = this.shadowRoot.querySelector("#modal-root .modal");
-      const name = modal.querySelector("#m-name").value.trim();
+      if (!modal) { this._toast("❌ Modal nicht gefunden"); return; }
+      const name = modal.querySelector("#m-name")?.value.trim() || "";
       if (!name) { this._toast("❌ Bitte Zimmername eingeben"); return; }
 
       const valves  = [...modal.querySelectorAll("#valve-list input")].map(i => i.value.trim()).filter(Boolean);
@@ -857,6 +858,7 @@
       </div>
     `, async () => {
       const modal  = this.shadowRoot.querySelector("#modal-root .modal");
+      if (!modal) { this._toast("❌ Modal nicht gefunden"); return; }
       const roomId = room.room_id;
       if (!roomId) { this._toast("❌ room_id fehlt – bitte HA neu starten"); return; }
       const mode    = modal.querySelector("#m-mode").value;
