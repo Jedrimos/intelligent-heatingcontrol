@@ -425,6 +425,10 @@ class IHCCoordinator(
         # Window restore mode: track per-room state to detect open→closed transitions
         self._prev_window_open: Dict[str, bool] = {}               # room_id → was window open last cycle
         self._pre_window_temps: Dict[str, float] = {}              # room_id → target_temp before window opened
+        # Last-known sensor temperature cache: entity_id → (value, timestamp)
+        # Used as fallback when a sensor goes unavailable during normal operation.
+        # Stale after SENSOR_FALLBACK_SECONDS (30 min) → returns None again.
+        self._last_known_sensor_temps: Dict[str, tuple] = {}       # entity_id → (float, datetime)
 
         # Event-driven window detection: single subscription for all window sensors.
         # Using one subscription (not per-sensor) avoids a bug where removing one sensor
@@ -1094,9 +1098,17 @@ class IHCCoordinator(
             return None
         state = self.hass.states.get(sensor)
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            # Outdoor sensor unavailable – reuse last known value (same 30-min window)
+            cached = self._last_known_sensor_temps.get(f"__outdoor__{sensor}")
+            if cached is not None:
+                cached_value, cached_at = cached
+                if (dt_util.utcnow() - cached_at).total_seconds() < self._SENSOR_FALLBACK_SECONDS:
+                    return cached_value
             return None
         try:
             raw = float(state.state)
+            # Cache the fresh reading under a namespaced key
+            self._last_known_sensor_temps[f"__outdoor__{sensor}"] = (raw, dt_util.utcnow())
         except ValueError:
             return None
 
@@ -1113,16 +1125,33 @@ class IHCCoordinator(
         readings = list(self._outdoor_temp_buffer)[-n:]
         return round(sum(readings) / len(readings), 1)
 
+    # Max age for last-known sensor temperature fallback (30 minutes)
+    _SENSOR_FALLBACK_SECONDS: int = 1800
+
     def _get_sensor_temp(self, sensor_entity: str) -> Optional[float]:
         if not sensor_entity:
             return None
         state = self.hass.states.get(sensor_entity)
-        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            return None
-        try:
-            return float(state.state)
-        except ValueError:
-            return None
+        if state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            try:
+                value = float(state.state)
+                # Update last-known cache with fresh reading
+                self._last_known_sensor_temps[sensor_entity] = (value, dt_util.utcnow())
+                return value
+            except ValueError:
+                return None
+        # Sensor unavailable/unknown – use last-known value if fresh enough
+        cached = self._last_known_sensor_temps.get(sensor_entity)
+        if cached is not None:
+            cached_value, cached_at = cached
+            age = (dt_util.utcnow() - cached_at).total_seconds()
+            if age < self._SENSOR_FALLBACK_SECONDS:
+                _LOGGER.debug(
+                    "IHC: Sensor %s unavailable – using last known value %.1f°C (age %.0fs)",
+                    sensor_entity, cached_value, age,
+                )
+                return cached_value
+        return None
 
     # ------------------------------------------------------------------
     # Control output
