@@ -11,7 +11,7 @@
 die eine intelligente, raumbasierte Heizungssteuerung realisiert.
 
 - **Domain:** `intelligent_heating_control`
-- **Version:** `1.6.2`
+- **Version:** `1.6.3`
 - **Repository:** https://github.com/Jedrimos/intelligent-heatingcontroll
 - **Aktiver Entwicklungs-Branch:** `claude/fix-heating-control-bugs-I9DSg`
 - **Dateipfad:** `/home/user/intelligent-heatingcontrol/`
@@ -1103,7 +1103,7 @@ Pro Heizkreis: Energie-Anteil = (Spreizung × Durchfluss × Laufzeit) / Gesamt.
 
 ## 11. Bekannte offene Punkte / Roadmap (aktualisiert)
 
-### Implementiert (✅) – Release 1.6.2 (2026-04-03)
+### Implementiert (✅) – Release 1.6.3 (2026-04-03)
 - **Bestätigungs-basierte TRV Override-Erkennung:** Kein falsches „manuell" nach Zeitplanwechsel
   - `_trv_cmd_pending[entity_id]` verfolgt gesendete Sollwerte
   - Override erst detektiert wenn TRV den Wert zurückmeldet (oder nach 600s Timeout)
