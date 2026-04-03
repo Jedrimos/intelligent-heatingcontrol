@@ -355,6 +355,15 @@ update_room:
           min: 0
           max: 18
           step: 0.5
+    window_restore_mode:
+      name: Sollwert nach Fenster schließen
+      description: "schedule = Zeitplan neu berechnen, previous = letzten Wert vor Öffnung wiederherstellen"
+      required: false
+      selector:
+        select:
+          options:
+            - "schedule"
+            - "previous"
     room_temp_threshold:
       name: Heiz-Temperaturschwelle (°C)
       description: "Mindesttemperatur ab der geheizt wird (0 = deaktiviert)"

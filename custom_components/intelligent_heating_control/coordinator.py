@@ -90,6 +90,8 @@ from .const import (
     DEFAULT_PRESENCE_SENSOR_OFF_DELAY,
     CONF_WINDOW_OPEN_TEMP,
     DEFAULT_WINDOW_OPEN_TEMP,
+    CONF_WINDOW_RESTORE_MODE,
+    DEFAULT_WINDOW_RESTORE_MODE,
     CONF_FROST_PROTECTION_TEMP,
     CONF_OFF_USE_FROST_PROTECTION,
     CONF_NIGHT_SETBACK_ENABLED,
@@ -414,6 +416,9 @@ class IHCCoordinator(
         # Brief-reopen guard: saves opening time when window closes, restored on quick reopen
         self._window_prev_open_since: Dict[str, Optional[float]] = {}
         self._window_closed_at: Dict[str, Optional[float]] = {}    # always set when window closes
+        # Window restore mode: track per-room state to detect open→closed transitions
+        self._prev_window_open: Dict[str, bool] = {}               # room_id → was window open last cycle
+        self._pre_window_temps: Dict[str, float] = {}              # room_id → target_temp before window opened
 
         # Event-driven window detection: single subscription for all window sensors.
         # Using one subscription (not per-sensor) avoids a bug where removing one sensor
@@ -1324,6 +1329,21 @@ class IHCCoordinator(
             if cold_boost > 0 and meta.get("source") not in ("frost_protection", "system_away", "system_vacation", "room_off"):
                 target_temp = min(float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP)), target_temp + cold_boost)
                 meta["cold_boost"] = cold_boost
+
+            # Window restore mode: snapshot/restore target_temp around window open events
+            prev_win = self._prev_window_open.get(room_id, False)
+            if window_open and not prev_win:
+                # Window just opened → snapshot pre-window target so we can restore it later
+                self._pre_window_temps[room_id] = target_temp
+            elif not window_open and prev_win:
+                # Window just closed → restore previous target if mode == "previous"
+                restore_mode = room.get(CONF_WINDOW_RESTORE_MODE, DEFAULT_WINDOW_RESTORE_MODE)
+                if restore_mode == "previous" and room_id in self._pre_window_temps:
+                    target_temp = self._pre_window_temps.pop(room_id)
+                    meta["source"] = meta.get("source", "schedule") + "+window_restore"
+                else:
+                    self._pre_window_temps.pop(room_id, None)
+            self._prev_window_open[room_id] = window_open
 
             # Manual TRV override detection: if TRV was adjusted by hand, switch room to manual
             if room_mode not in (ROOM_MODE_OFF, ROOM_MODE_MANUAL) and not window_open:

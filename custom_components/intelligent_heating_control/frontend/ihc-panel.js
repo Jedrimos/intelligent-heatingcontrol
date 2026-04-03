@@ -5473,6 +5473,14 @@ class IHCPanel extends HTMLElement {
             <input type="number" class="form-input" id="m-window-open-temp" min="0" max="22" step="0.5" value="0" placeholder="0 = Frostschutz">
             <span class="form-hint">Temperatur bei offenem Fenster (0 = Frostschutz 7°C)</span>
           </div>
+          <div class="settings-item">
+            <label>Nach Fenster schließen</label>
+            <select class="form-select" id="m-window-restore-mode">
+              <option value="schedule">Zeitplan neu berechnen</option>
+              <option value="previous">Letzten Sollwert wiederherstellen</option>
+            </select>
+            <span class="form-hint">Was passiert mit dem Sollwert wenn das Fenster wieder geschlossen wird</span>
+          </div>
         </div>
       </div>
 
@@ -5572,6 +5580,7 @@ class IHCPanel extends HTMLElement {
         window_reaction_time:   parseInt(modal.querySelector("#m-window-reaction-time")?.value, 10) || 30,
         window_close_delay:     parseInt(modal.querySelector("#m-window-close-delay")?.value, 10) || 0,
         window_open_temp:       parseFloat(modal.querySelector("#m-window-open-temp")?.value ?? "0") || 0,
+        window_restore_mode:    modal.querySelector("#m-window-restore-mode")?.value || "schedule",
         humidity_sensor:          modal.querySelector("#m-humidity-sensor")?.value.trim() || "",
         mold_protection_enabled:  modal.querySelector("#m-mold-protection")?.value === "true",
         mold_humidity_threshold:  parseFloat(modal.querySelector("#m-mold-humidity-threshold")?.value) || 70,
@@ -5839,6 +5848,14 @@ class IHCPanel extends HTMLElement {
               <input type="number" class="form-input" id="m-window-open-temp"
                 min="0" max="22" step="0.5" value="${room.window_open_temp ?? 0}" placeholder="0 = Frostschutz">
               <span class="form-hint">Temperatur bei offenem Fenster (0 = Frostschutz 7°C)</span>
+            </div>
+            <div class="settings-item">
+              <label>Nach Fenster schließen</label>
+              <select class="form-select" id="m-window-restore-mode">
+                <option value="schedule" ${(room.window_restore_mode || 'schedule') === 'schedule' ? 'selected' : ''}>Zeitplan neu berechnen</option>
+                <option value="previous" ${room.window_restore_mode === 'previous' ? 'selected' : ''}>Letzten Sollwert wiederherstellen</option>
+              </select>
+              <span class="form-hint">Was passiert mit dem Sollwert wenn das Fenster wieder geschlossen wird</span>
             </div>
           </div>
         </div>
@@ -6114,6 +6131,7 @@ class IHCPanel extends HTMLElement {
         window_reaction_time:   parseInt(modal.querySelector("#m-window-reaction-time")?.value, 10) || 30,
         window_close_delay:     parseInt(modal.querySelector("#m-window-close-delay")?.value, 10) || 0,
         window_open_temp:       parseFloat(modal.querySelector("#m-window-open-temp")?.value ?? "0") || 0,
+        window_restore_mode:    modal.querySelector("#m-window-restore-mode")?.value || "schedule",
         humidity_sensor:          modal.querySelector("#m-humidity-sensor")?.value.trim() || "",
         mold_protection_enabled:  modal.querySelector("#m-mold-protection")?.value === "true",
         mold_humidity_threshold:  parseFloat(modal.querySelector("#m-mold-humidity-threshold")?.value) || 70,

@@ -391,6 +391,10 @@ DEFAULT_PRESENCE_SENSOR_OFF_DELAY: Final = 300  # 5 Minuten – verhindert sofor
 CONF_WINDOW_OPEN_TEMP: Final = "window_open_temp"
 DEFAULT_WINDOW_OPEN_TEMP: Final = 0.0  # 0 = Frostschutz-Temp verwenden (Legacy-Verhalten)
 
+# Sollwert-Wiederherstellung nach Fenster schließen
+CONF_WINDOW_RESTORE_MODE: Final = "window_restore_mode"
+DEFAULT_WINDOW_RESTORE_MODE: Final = "schedule"   # "schedule" = Zeitplan neu berechnen | "previous" = letzten Sollwert vor Öffnung wiederherstellen
+
 # Aggressiver Modus: Überhitzt TRV-Sollwert wenn Raum weit unter Soll (für träge TRVs)
 CONF_AGGRESSIVE_MODE_ENABLED: Final = "aggressive_mode_enabled"
 DEFAULT_AGGRESSIVE_MODE_ENABLED: Final = False

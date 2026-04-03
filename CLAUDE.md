@@ -1196,28 +1196,29 @@ Abgleich mit dem Blueprint `panhans/advanced_heating_control.yaml` ergab folgend
 - [x] `coordinator.py` – Persistenz: `_presence_away_pending_since` ISO-String in `_async_save_runtime_state()` / `async_load_runtime_state()` ✓
 - [x] Frontend `05_tab_settings.js` – Slider (0–120 min) + Status via `sensor.ihc_gesamtanforderung.presence_away_pending*`
 
-##### `CONF_ROOM_TEMP_THRESHOLD` – Temperaturschwelle pro Zimmer
+##### `CONF_ROOM_TEMP_THRESHOLD` – Temperaturschwelle pro Zimmer ✅ Vollständig
 - [x] `const.py` – `CONF_ROOM_TEMP_THRESHOLD`, `DEFAULT_ROOM_TEMP_THRESHOLD = 0.0`
 - [x] `room_logic.py` – Check in `_calculate_target_temp()` nach Systemmode-Checks, vor Raummode-Checks (source: `"temp_threshold_override"`)
 - [x] `config_flow.py` – Number-Feld 0–25°C in `async_step_add_room` + `async_step_edit_room_details`
 - [x] `__init__.py` – `handle_add_room()`: `CONF_ROOM_TEMP_THRESHOLD: float(...)`; in `_FLOAT_FIELDS` für `handle_update_room()`
-- [ ] Frontend `08_modals.js` – Feld in Add/Edit-Modal (beide synchron!)
-- [ ] Frontend `04_tab_rooms.js` – Badge/Status wenn Schwelle aktiv überschrieben wird
-- **Architektur-Hinweis:** Refactor: `_calculate_target_temp(room, outdoor_temp, current_temp=None)` – `current_temp` als Parameter statt Sensor direkt lesen; coordinator.py übergibt den dort bereits berechneten Wert
+- [x] Frontend `08_modals.js` – Feld `#m-room-temp-threshold` in Add + Edit Modal
+- [ ] Frontend `04_tab_rooms.js` – Badge/Hinweis im Zimmer-Detail wenn Schwelle aktiv greift
 
-##### `CONF_COMFORT_TEMP_ENTITY` / `CONF_ECO_TEMP_ENTITY` – Dynamische Sollwert-Entitäten
+##### `CONF_COMFORT_TEMP_ENTITY` / `CONF_ECO_TEMP_ENTITY` – Dynamische Sollwert-Entitäten ✅ Vollständig
 - [x] `const.py` – `CONF_COMFORT_TEMP_ENTITY`, `CONF_ECO_TEMP_ENTITY` definiert
 - [x] `room_logic.py` – In `_get_room_preset_temps()`: Entity-Wert überschreibt Heizkurven-Wert wenn konfiguriert
 - [x] `config_flow.py` – Entity-Selector (input_number, sensor) in `async_step_add_room` + `async_step_edit_room_details`
 - [x] `__init__.py` – `handle_add_room()`: beide Felder ergänzt
-- [ ] Frontend `08_modals.js` – Entity-ID Textfeld in Add/Edit-Modal (beide synchron!)
+- [x] Frontend `08_modals.js` – Entity-ID Textfeld `#m-comfort-temp-entity` + `#m-eco-temp-entity` in Add + Edit Modal
 
-##### `CONF_WINDOW_RESTORE_MODE` – Sollwert-Wiederherstellung nach Fenster schließen
-- [ ] `const.py` – `CONF_WINDOW_RESTORE_MODE: Final = "window_restore_mode"` (Werte: `"previous"` | `"schedule"`)
-- [ ] `window_manager.py` – Letzten Sollwert vor Fensteröffnung pro Raum speichern (`_pre_window_temp`)
-- [ ] `coordinator.py` – Bei Fenster-Schließen: `_pre_window_temp` verwenden statt Kurve neu berechnen
-- [ ] `config_flow.py` – Select in Room-Settings
-- [ ] `__init__.py` + Frontend – Standard Add/Edit-Modal Sync
+##### `CONF_WINDOW_RESTORE_MODE` – Sollwert-Wiederherstellung nach Fenster schließen ✅ Vollständig
+- [x] `const.py` – `CONF_WINDOW_RESTORE_MODE`, `DEFAULT_WINDOW_RESTORE_MODE = "schedule"`
+- [x] `window_manager.py` – Import der neuen Konstanten
+- [x] `coordinator.py` – `_prev_window_open` + `_pre_window_temps` Dicts; open→close Transition: snapshot/restore Logik
+- [x] `config_flow.py` – Select "schedule"/"previous" in `async_step_add_room` + `async_step_edit_room_details`
+- [x] `__init__.py` – `handle_add_room()` + Import
+- [x] `climate.py` – `"window_restore_mode"` in `extra_state_attributes`
+- [x] Frontend `08_modals.js` – `<select id="m-window-restore-mode">` in Add + Edit Modal + save handler
 
 #### Kurzfristig (1.x)
 - **1.4:** ETA-basierte Vorheizung (Backend bereits implementiert, UI ausstehend)
