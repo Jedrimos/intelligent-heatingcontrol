@@ -225,6 +225,8 @@ DEFAULT_ADAPTIVE_PREHEAT_ENABLED: Final = True
 # v1.4 – ETA-based pre-heating
 CONF_ETA_PREHEAT_ENABLED: Final = "eta_preheat_enabled"
 DEFAULT_ETA_PREHEAT_ENABLED: Final = False
+CONF_ETA_PREHEAT_THRESHOLD_MINUTES: Final = "eta_preheat_threshold_minutes"
+DEFAULT_ETA_PREHEAT_THRESHOLD_MINUTES: Final = 90  # start preheating when arrival ≤ this many minutes away
 
 # v1.5 – Cooling mode target temperature
 CONF_COOLING_TARGET_TEMP: Final = "cooling_target_temp"

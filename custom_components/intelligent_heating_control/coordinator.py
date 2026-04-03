@@ -350,6 +350,8 @@ class IHCCoordinator(
 
         # Roadmap 1.1 – Temperature history per room (deque of (ts_iso, temp) tuples)
         self._temp_history: Dict[str, deque] = {}
+        # Target temperature history (same format/cadence as _temp_history)
+        self._target_history: Dict[str, deque] = {}
         # Track when history was last persisted (save at most once per hour)
         self._history_last_saved: Optional[datetime] = None
 
@@ -540,6 +542,8 @@ class IHCCoordinator(
         # Restore temperature history (persisted across restarts)
         for room_id, entries in data.get("temp_history", {}).items():
             self._temp_history[room_id] = deque(entries, maxlen=CONF_TEMP_HISTORY_SIZE)
+        for room_id, entries in data.get("target_history", {}).items():
+            self._target_history[room_id] = deque(entries, maxlen=CONF_TEMP_HISTORY_SIZE)
         # Restore warmup history (for predictive pre-heating)
         self._warmup_history = data.get("warmup_history", {})
         # Restore adaptive curve state
@@ -572,7 +576,8 @@ class IHCCoordinator(
             # Persist boost expiry times so active boosts survive HA restarts
             "boost_until": {rid: dt.isoformat() for rid, dt in self._boost_until.items()},
             # Persist temperature history so sparklines survive HA restarts
-            "temp_history": {rid: list(hist) for rid, hist in self._temp_history.items()},
+            "temp_history":    {rid: list(hist) for rid, hist in self._temp_history.items()},
+            "target_history":  {rid: list(hist) for rid, hist in self._target_history.items()},
             # Persist warmup history for predictive pre-heating
             "warmup_history": self._warmup_history,
             # Persist adaptive curve state
@@ -962,6 +967,28 @@ class IHCCoordinator(
     def get_temp_history(self, room_id: str) -> list:
         return list(self._temp_history.get(room_id, []))
 
+    def _update_target_history(self, room_id: str, target_temp: Optional[float]) -> None:
+        """Append hourly target-temperature snapshot (same cadence as _update_temp_history)."""
+        if target_temp is None:
+            return
+        history = self._target_history.setdefault(
+            room_id, deque(maxlen=CONF_TEMP_HISTORY_SIZE)
+        )
+        now = datetime.now()
+        if history:
+            last_entry = list(history)[-1]
+            try:
+                last_dt = datetime.fromisoformat(last_entry["t"])
+                if (now - last_dt).total_seconds() < 3300:  # 55 min
+                    return
+            except (ValueError, KeyError):
+                pass
+        ts = now.isoformat(timespec="minutes")
+        history.append({"t": ts, "v": round(target_temp, 1)})
+
+    def get_target_history(self, room_id: str) -> list:
+        return list(self._target_history.get(room_id, []))
+
     # NOTE: _update_warmup_tracking, _detect_sensor_anomaly, _is_schedule_group_active,
     # get_next_schedule_period, get_avg_warmup_minutes, _get_solar_boost,
     # _get_energy_price_eco_offset, _get_weather_cold_boost, _get_current_energy_price,
@@ -1250,6 +1277,7 @@ class IHCCoordinator(
 
             # Update temperature history (Roadmap 1.1)
             self._update_temp_history(room_id, current_temp)
+            self._update_target_history(room_id, target_temp)
 
             # Room-level presence check (Roadmap 1.2 – exposed to UI)
             room_presence_active = self._check_room_presence(room)
@@ -1371,7 +1399,8 @@ class IHCCoordinator(
                 "room_mode": room_mode,
                 "manual_temp": self.get_room_manual_temp(room_id),
                 "boost_remaining": self.get_boost_remaining_minutes(room_id),
-                "temp_history": self.get_temp_history(room_id),     # Roadmap 1.1
+                "temp_history":   self.get_temp_history(room_id),    # Roadmap 1.1
+                "target_history": self.get_target_history(room_id), # v1.6.2 – target temp trend
                 "avg_warmup_minutes": self.get_avg_warmup_minutes(room_id),
                 "next_period": self.get_next_schedule_period(room_id),  # Roadmap 1.1
                 "anomaly": self._detect_sensor_anomaly(room_id),    # Roadmap 1.1

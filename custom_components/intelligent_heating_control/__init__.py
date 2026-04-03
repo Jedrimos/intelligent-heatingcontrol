@@ -441,6 +441,7 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
             "adaptive_preheat_enabled",
             # v1.4 – ETA-based pre-heat
             "eta_preheat_enabled",
+            "eta_preheat_threshold_minutes",
             # Roadmap 2.0
             "controller_mode", "guest_duration_hours",
             "vacation_return_preheat_days",

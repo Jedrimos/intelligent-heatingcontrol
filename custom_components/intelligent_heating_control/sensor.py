@@ -36,6 +36,7 @@ from .const import (
     CONF_ADAPTIVE_PREHEAT_ENABLED, DEFAULT_ADAPTIVE_PREHEAT_ENABLED,
     # v1.4 ETA pre-heat
     CONF_ETA_PREHEAT_ENABLED, DEFAULT_ETA_PREHEAT_ENABLED,
+    CONF_ETA_PREHEAT_THRESHOLD_MINUTES, DEFAULT_ETA_PREHEAT_THRESHOLD_MINUTES,
     # v1.5 Cooling target + smart meter
     CONF_COOLING_TARGET_TEMP, DEFAULT_COOLING_TARGET_TEMP,
     CONF_SMART_METER_ENTITY,
@@ -219,7 +220,8 @@ class IHCTotalDemandSensor(_IHCBase, SensorEntity):
             # Intelligent control (adaptive curve, ETA pre-heat)
             "adaptive_curve_enabled":      cfg.get(CONF_ADAPTIVE_CURVE_ENABLED, DEFAULT_ADAPTIVE_CURVE_ENABLED),
             "adaptive_preheat_enabled":    cfg.get(CONF_ADAPTIVE_PREHEAT_ENABLED, DEFAULT_ADAPTIVE_PREHEAT_ENABLED),
-            "eta_preheat_enabled":         cfg.get(CONF_ETA_PREHEAT_ENABLED, DEFAULT_ETA_PREHEAT_ENABLED),
+            "eta_preheat_enabled":              cfg.get(CONF_ETA_PREHEAT_ENABLED, DEFAULT_ETA_PREHEAT_ENABLED),
+            "eta_preheat_threshold_minutes":   cfg.get(CONF_ETA_PREHEAT_THRESHOLD_MINUTES, DEFAULT_ETA_PREHEAT_THRESHOLD_MINUTES),
             "vacation_calendar":           cfg.get(CONF_VACATION_CALENDAR, ""),
             "flow_temp_sensor":            cfg.get(CONF_FLOW_TEMP_SENSOR, ""),
             "smart_meter_entity":          cfg.get(CONF_SMART_METER_ENTITY, ""),
