@@ -1299,12 +1299,14 @@ class IHCCoordinator(
 
             # Update temperature history (Roadmap 1.1)
             self._update_temp_history(room_id, current_temp)
-            self._update_target_history(room_id, target_temp)
 
             # Room-level presence check (Roadmap 1.2 – exposed to UI)
             room_presence_active = self._check_room_presence(room)
 
             target_temp, meta = self._calculate_target_temp(room, outdoor_temp)
+
+            # target_history logged after target_temp is known (v1.6.2)
+            self._update_target_history(room_id, target_temp)
 
             # Emergency frost protection when system is OFF (and not already frost-protecting):
             # If outdoor temp is below 0°C AND room temp is very cold (<10°C) AND window is closed,
