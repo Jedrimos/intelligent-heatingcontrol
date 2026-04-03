@@ -571,6 +571,46 @@
         </div>
       </div>
 
+      <div class="modal-section">
+        <div class="modal-section-title">🔗 Dynamische Sollwert-Entitäten <span style="font-weight:400;font-size:10px">(optional)</span></div>
+        <div class="settings-grid">
+          <div class="settings-item" style="grid-column:1/-1">
+            <label>Komfort-Sollwert Entity</label>
+            <input type="text" class="form-input full" id="m-comfort-temp-entity"
+              value="${room.comfort_temp_entity || ''}"
+              placeholder="input_number.komfort_soll"
+              data-ep-domains="input_number,sensor" autocomplete="off">
+            <span class="form-hint">Überschreibt die Heizkurve als Komfort-Sollwert (optional)</span>
+          </div>
+          <div class="settings-item" style="grid-column:1/-1">
+            <label>Eco-Sollwert Entity</label>
+            <input type="text" class="form-input full" id="m-eco-temp-entity"
+              value="${room.eco_temp_entity || ''}"
+              placeholder="input_number.eco_soll"
+              data-ep-domains="input_number,sensor" autocomplete="off">
+            <span class="form-hint">Überschreibt den berechneten Eco-Sollwert (optional)</span>
+          </div>
+        </div>
+        <div class="modal-section-title">⏱️ Komfort-Verlängerung <span style="font-weight:400;font-size:10px">(optional)</span></div>
+        <div class="settings-grid">
+          <div class="settings-item" style="grid-column:1/-1">
+            <label>Verlängerungs-Entity</label>
+            <input type="text" class="form-input full" id="m-comfort-extend-entity"
+              value="${room.comfort_extend_entity || ''}"
+              placeholder="media_player.tv oder switch.tv"
+              data-ep-domains="media_player,switch,binary_sensor,input_boolean,person,device_tracker" autocomplete="off">
+            <span class="form-hint">Wenn diese Entity aktiv ist, bleibt die Komforttemperatur trotz Zeitplan erhalten (z.B. TV läuft → kein Eco um 22 Uhr)</span>
+          </div>
+          <div class="settings-item">
+            <label>Auslöse-Zustand</label>
+            <input type="text" class="form-input" id="m-comfort-extend-state"
+              value="${room.comfort_extend_state || 'on'}"
+              placeholder="on / playing / home">
+            <span class="form-hint">Zustand der die Verlängerung aktiviert</span>
+          </div>
+        </div>
+      </div>
+
       <details class="modal-collapsible">
         <summary>Erweitert</summary>
         <div class="modal-collapsible-body">
@@ -935,6 +975,10 @@
         trv_valve_demand:         modal.querySelector("#m-trv-valve-demand")?.checked === true,
         trv_min_send_interval:    parseInt(modal.querySelector("#m-trv-min-send-interval")?.value, 10) || 0,
         trv_calibrations:         (() => { try { const v = modal.querySelector("#m-trv-calibrations")?.value.trim(); return v ? JSON.parse(v) : {}; } catch { return {}; } })(),
+        comfort_temp_entity:      modal.querySelector("#m-comfort-temp-entity")?.value.trim() || "",
+        eco_temp_entity:          modal.querySelector("#m-eco-temp-entity")?.value.trim() || "",
+        comfort_extend_entity:    modal.querySelector("#m-comfort-extend-entity")?.value.trim() || "",
+        comfort_extend_state:     modal.querySelector("#m-comfort-extend-state")?.value.trim() || "on",
         ha_schedules,
       });
       this._closeModal();
