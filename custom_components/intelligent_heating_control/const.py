@@ -111,6 +111,19 @@ DEFAULT_HA_SCHEDULE_OFF_MODE: Final = "eco"  # fallback when no HA schedule acti
 DEFAULT_RADIATOR_KW: Final = 1.0             # kW – sensible default for a single-radiator room
 DEFAULT_HKV_FACTOR: Final = 0.083           # kWh per Einheit (typical district-heating value)
 DEFAULT_SUMMER_THRESHOLD: Final = 18.0
+
+# External entity override for summer mode (input_boolean.* or binary_sensor.*)
+# ON = summer active (heating blocked); OFF = heating allowed
+CONF_SUMMER_MODE_ENTITY: Final = "summer_mode_entity"
+
+# Forecast cold-night: suspend summer mode and start heating earlier when tonight will be cold
+CONF_FORECAST_COLDNIGHT_ENABLED: Final = "forecast_coldnight_enabled"
+DEFAULT_FORECAST_COLDNIGHT_ENABLED: Final = False
+CONF_FORECAST_COLDNIGHT_TEMP: Final = "forecast_coldnight_temp"
+DEFAULT_FORECAST_COLDNIGHT_TEMP: Final = 8.0
+CONF_FORECAST_ADVANCE_HOURS: Final = "forecast_advance_hours"
+DEFAULT_FORECAST_ADVANCE_HOURS: Final = 3
+
 DEFAULT_FROST_PROTECTION_TEMP: Final = 7.0
 DEFAULT_OFF_USE_FROST_PROTECTION: Final = False  # default: actually turn off TRVs in OFF mode
 DEFAULT_NIGHT_SETBACK_OFFSET: Final = 2.0
@@ -221,6 +234,10 @@ DEFAULT_ADAPTIVE_CURVE_MAX_DELTA: Final = 3.0
 # v1.3 – Predictive pre-heating (uses warmup history when available)
 CONF_ADAPTIVE_PREHEAT_ENABLED: Final = "adaptive_preheat_enabled"
 DEFAULT_ADAPTIVE_PREHEAT_ENABLED: Final = True
+
+# v1.7 – Optimum Start: outdoor-temp-bucketed warmup learning + thermal mass (cooling rate)
+CONF_OPTIMUM_START_ENABLED: Final = "optimum_start_enabled"
+DEFAULT_OPTIMUM_START_ENABLED: Final = False  # opt-in
 
 # v1.4 – ETA-based pre-heating
 CONF_ETA_PREHEAT_ENABLED: Final = "eta_preheat_enabled"

@@ -580,6 +580,35 @@ update_global_settings:
           min: 10
           max: 30
           step: 0.5
+    summer_mode_entity:
+      name: Sommermodus-Entity (externer Schalter)
+      required: false
+      selector:
+        entity:
+          domain:
+            - input_boolean
+            - binary_sensor
+    forecast_coldnight_enabled:
+      name: Kälteprognose-Frühstart aktivieren
+      required: false
+      selector:
+        boolean:
+    forecast_coldnight_temp:
+      name: Kälteschwelle Nacht (°C)
+      required: false
+      selector:
+        number:
+          min: -10
+          max: 20
+          step: 0.5
+    forecast_advance_hours:
+      name: Frühstart-Vorlaufzeit (Stunden)
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 8
+          step: 1
     night_setback_enabled:
       name: Nachtabsenkung aktivieren
       required: false

@@ -146,6 +146,37 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
         | ClimateEntityFeature.TURN_OFF
         | ClimateEntityFeature.TURN_ON
     )
+    # Exclude large/static attributes from recorder.
+    # The climate entity carries the full room config mirror (~40 KB); only the small
+    # operational attributes (temperature, demand, mode, window_open) are useful historically.
+    _attr_extra_state_attributes_excluded_from_recorder = frozenset({
+        # Schedules – static config, large JSON, only current value matters
+        "schedules",
+        "ha_schedules",
+        "ha_schedule_blocks",
+        # 7×24 EMA grid that changes every 60 s – no historical value in DB
+        "demand_heatmap",
+        # Static config lists – never useful as time-series data
+        "valve_entities",
+        "window_sensors",
+        "room_presence_entities",
+        "trv_calibrations",
+        "trv_stuck_valves",
+        # Sensor entity-IDs – static config mirrors
+        "temp_sensor",
+        "humidity_sensor",
+        "co2_sensor",
+        "hkv_sensor",
+        "presence_sensor",
+        "comfort_temp_entity",
+        "eco_temp_entity",
+        "comfort_extend_entity",
+        # next_period / anomaly – transient, not useful in long-term history
+        "next_period",
+        "anomaly",
+        # Learning data – large lists, best read on demand not stored every 60 s
+        "warmup_curve",
+    })
 
     def __init__(self, coordinator: IHCCoordinator, entry: ConfigEntry, room: dict) -> None:
         super().__init__(coordinator)
@@ -181,6 +212,9 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
 
     @property
     def target_temperature(self) -> Optional[float]:
+        # In summer mode there is no heating target
+        if (self.coordinator.data or {}).get("summer_mode", False):
+            return None
         # During boost: report max_temp so the climate tile matches what we send to the TRV
         if self.coordinator.get_boost_remaining_minutes(self._room_id) > 0:
             room_cfg = self.coordinator.get_room_config(self._room_id) or {}
@@ -191,6 +225,9 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
     @property
     def hvac_mode(self) -> HVACMode:
         if self.coordinator.get_system_mode() == SYSTEM_MODE_OFF:
+            return HVACMode.OFF
+        # Summer mode: heating globally disabled
+        if (self.coordinator.data or {}).get("summer_mode", False):
             return HVACMode.OFF
         mode = self.coordinator.get_room_mode(self._room_id)
         if mode == ROOM_MODE_OFF:
@@ -206,6 +243,8 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
         d = self._room_data
         if d is None:
             return None
+        if self.coordinator.data and self.coordinator.data.get("summer_mode", False):
+            return HVACAction.OFF
         if self.coordinator.get_system_mode() == SYSTEM_MODE_OFF:
             return HVACAction.OFF
         if d.get("room_mode") == ROOM_MODE_OFF:
@@ -365,6 +404,10 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "trv_stuck_valves": d.get("trv_stuck_valves", []),
             # Demand heatmap (7 days × 24 hours EMA)
             "demand_heatmap": d.get("demand_heatmap", []),
+            # Optimum Start & Thermal Mass learning data
+            "learned_preheat_minutes": d.get("learned_preheat_minutes"),
+            "avg_cooling_rate": d.get("avg_cooling_rate"),
+            "warmup_curve": d.get("warmup_curve", []),
         }
 
     async def async_set_temperature(self, **kwargs: Any) -> None:

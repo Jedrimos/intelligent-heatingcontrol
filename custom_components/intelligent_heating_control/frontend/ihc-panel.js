@@ -1029,6 +1029,8 @@ class IHCPanel extends HTMLElement {
       outdoor_temp:              ot  ? parseFloat(ot.state) : null,
       rooms_demanding:           a.rooms_demanding || 0,
       summer_mode:               a.summer_mode || false,
+      forecast_coldnight_active: a.forecast_coldnight_active || false,
+      forecast_advance_hours:    a.forecast_advance_hours ?? 3,
       night_setback_active:      a.night_setback_active || false,
       presence_away_active:      a.presence_away_active || false,
       heating_runtime_today:     rt  ? parseFloat(rt.state) || 0 : (a.heating_runtime_today || 0),
@@ -1601,7 +1603,8 @@ class IHCPanel extends HTMLElement {
     const _demA = (this._st("sensor.ihc_gesamtanforderung") || { attributes: {} }).attributes;
     const banners = [
       _demA.startup_grace_active ? `<div class="system-banner warn">⏳ <strong>Startup-Gnadenfrist aktiv</strong> – Heizung gesperrt bis alle Sensoren geladen sind</div>` : "",
-      g.summer_mode           ? `<div class="system-banner summer">☀️ <strong>Sommerautomatik aktiv</strong> – Heizung gesperrt</div>` : "",
+      g.summer_mode           ? `<div class="system-banner summer" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span>☀️ <strong>Sommerautomatik aktiv</strong> – Heizung gesperrt</span><button id="btn-disable-summer" style="flex-shrink:0;padding:4px 10px;border:none;border-radius:6px;background:rgba(0,0,0,0.15);color:inherit;cursor:pointer;font-size:12px;font-weight:600">❄️ Jetzt heizen</button></div>` : "",
+      g.forecast_coldnight_active ? `<div class="system-banner cold">❄️ <strong>Kälte heute Nacht</strong> – Heizung startet ${g.forecast_advance_hours ?? 3}h früher (${g.weather_forecast?.forecast_today_min}°C erwartet)</div>` : "",
       g.night_setback_active  ? `<div class="system-banner night">🌙 <strong>Nachtabsenkung aktiv</strong> – Temperaturen reduziert</div>` : "",
       g.presence_away_active  ? `<div class="system-banner away">🚶 <strong>Niemand zuhause</strong> – Abwesend-Modus aktiv</div>` : "",
       g.solar_boost > 0       ? `<div class="system-banner solar">🌞 <strong>Solar-Überschuss</strong>${g.solar_power != null ? " · " + g.solar_power + " W" : ""} · +${g.solar_boost}°C angehoben</div>` : "",
@@ -1730,6 +1733,16 @@ class IHCPanel extends HTMLElement {
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--secondary-text-color);margin-bottom:10px">${sortedRooms.length} Zimmer</div>
       <div class="rooms-grid">${roomCards}</div>
     `;
+
+    // Summer mode quick-disable button
+    const btnDisableSummer = content.querySelector("#btn-disable-summer");
+    if (btnDisableSummer) {
+      btnDisableSummer.addEventListener("click", () => {
+        this._callService("update_global_settings", { summer_mode_enabled: false });
+        this._toast("☀️ Sommerautomatik deaktiviert – Heizung freigegeben");
+        setTimeout(() => { if (this._activeTab === "overview" && !this._modalOpen) this._renderTabContent(); }, 400);
+      });
+    }
 
     // Sysmode-pill buttons (system mode quick-select in hero section)
     content.querySelectorAll(".sysmode-pill[data-sysmode]").forEach(btn => {
@@ -3083,6 +3096,62 @@ class IHCPanel extends HTMLElement {
       const gridContainer = heatmapCard.querySelector(`#hm-${room.room_id}`);
       gridContainer.innerHTML = this._renderDemandHeatmapGrid(room.demand_heatmap);
     }
+
+    // Optimum Start – Lernkurve + Thermische Masse
+    const warmupCurve = room.warmup_curve || [];
+    const learnedMin = room.learned_preheat_minutes;
+    const coolingRate = room.avg_cooling_rate;
+    if (warmupCurve.length > 0 || coolingRate != null) {
+      const learnCard = document.createElement("div");
+      learnCard.className = "card";
+      learnCard.style.marginTop = "16px";
+
+      // Build warmup curve table rows
+      let warmupRows = "";
+      if (warmupCurve.length > 0) {
+        warmupRows = warmupCurve.map(pt => `
+          <tr>
+            <td style="padding:3px 8px;text-align:right">${pt.outdoor_temp > 0 ? "+" : ""}${pt.outdoor_temp} °C</td>
+            <td style="padding:3px 8px;text-align:right">${pt.avg_minutes.toFixed(0)} min</td>
+            <td style="padding:3px 8px;text-align:right;color:var(--secondary-text-color)">${pt.samples}×</td>
+          </tr>`).join("");
+      }
+
+      learnCard.innerHTML = `
+        <div class="card-title">🧠 Lernkurve – Optimum Start & Thermische Masse</div>
+        <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:12px">
+          IHC misst wie lange der Raum benötigt um den Sollwert zu erreichen (Aufheizrate) und wie schnell er abkühlt.
+          Die Daten werden pro Außentemperatur gespeichert und für die automatische Vorheizzeit genutzt.
+        </div>
+        ${learnedMin != null ? `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span style="font-size:13px">📐 Aktuelle Vorheizzeit (gelernt):</span>
+            <span style="font-size:15px;font-weight:700;color:var(--primary-color)">${learnedMin.toFixed(0)} min</span>
+          </div>` : ""}
+        ${coolingRate != null ? `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span style="font-size:13px">❄️ Abkühlrate:</span>
+            <span style="font-size:15px;font-weight:700;color:#42a5f5">${coolingRate.toFixed(3)} °C/h je °C Δ (innen/außen)</span>
+          </div>` : ""}
+        ${warmupCurve.length > 0 ? `
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px">Aufheizkurve nach Außentemperatur</div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead>
+                <tr style="border-bottom:1px solid var(--divider-color)">
+                  <th style="padding:3px 8px;text-align:right;color:var(--secondary-text-color)">Außen</th>
+                  <th style="padding:3px 8px;text-align:right;color:var(--secondary-text-color)">Ø Aufheizzeit</th>
+                  <th style="padding:3px 8px;text-align:right;color:var(--secondary-text-color)">Messungen</th>
+                </tr>
+              </thead>
+              <tbody>${warmupRows}</tbody>
+            </table>
+          </div>` : `
+          <div style="padding:16px;text-align:center;color:var(--secondary-text-color);font-size:12px">
+            Noch keine Lernkurven-Daten – IHC sammelt beim nächsten Aufheizzyklus erste Messungen.
+          </div>`}`;
+      container.appendChild(learnCard);
+    }
   }
 
 
@@ -3633,6 +3702,15 @@ class IHCPanel extends HTMLElement {
               <span class="form-hint">Ab dieser Außentemperatur wird die Heizung gesperrt (Sommerautomatik muss aktiviert sein).</span>
             </div>
             <div class="settings-item" style="grid-column:1/-1">
+              <label>Sommermodus-Entity (externer Schalter)
+                ${a.summer_mode_entity ? `<span class="badge" style="background:#ff9800;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px">Extern gesteuert</span>` : ""}
+              </label>
+              <input type="text" class="form-input full" id="s-summer-mode-entity"
+                value="${a.summer_mode_entity || ''}" placeholder="input_boolean.sommermodus"
+                data-ep-domains="input_boolean,binary_sensor" autocomplete="off">
+              <span class="form-hint">Optional: Überschreibt die Temperatur-Automatik. ON = Sommer aktiv (Heizung gesperrt), OFF = Heizung freigegeben. Ideal für Automationen oder einen physischen Schalter.</span>
+            </div>
+            <div class="settings-item" style="grid-column:1/-1">
               <label>Heizperiode-Entity
                 ${a.heating_period_active === false ? `<span class="badge" style="background:#ff9800;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px">⏸ Inaktiv</span>` : a.heating_period_active ? `<span class="badge" style="background:#4caf50;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px">✓ Aktiv</span>` : ""}
               </label>
@@ -3644,6 +3722,44 @@ class IHCPanel extends HTMLElement {
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="save-temp-settings">💾 Temperaturen speichern</button>
+          </div>
+        </div>
+      </details>
+
+      <!-- ── Kälteprognose & Frühstart ────────────────────── -->
+      <details class="ihc-card" ${a.forecast_coldnight_enabled ? "open" : ""}>
+        <summary>
+          <span class="ihc-card-title">❄️ Kälteprognose – Frühstart
+            ${(() => { const fc = g.weather_forecast; const active = a.forecast_coldnight_enabled && fc && fc.forecast_today_min != null && fc.forecast_today_min <= (a.forecast_coldnight_temp ?? 8); return active ? `<span class="badge" style="background:#29b6f6;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px">❄️ Aktiv – ${fc.forecast_today_min}°C</span>` : ""; })()}
+          </span>
+        </summary>
+        <div class="ihc-card-body">
+          <p style="margin:0 0 12px;font-size:13px;color:var(--secondary-text-color)">
+            Wenn die Wetterprognose heute Nacht unter den Schwellwert fällt: Sommerautomatik für heute deaktiviert und Heizung startet automatisch früher (Vorheizzeit verlängert). Erfordert eine konfigurierte Wetter-Entity unter <em>System &amp; Sensoren</em>.
+          </p>
+          <div class="settings-grid">
+            <div class="settings-item">
+              <label>Kälteprognose-Frühstart</label>
+              <select class="form-select" id="s-forecast-coldnight-enabled">
+                <option value="false" ${!a.forecast_coldnight_enabled ? "selected" : ""}>Deaktiviert</option>
+                <option value="true" ${a.forecast_coldnight_enabled ? "selected" : ""}>Aktiviert</option>
+              </select>
+            </div>
+            <div class="settings-item">
+              <label>Kälteschwelle Nacht (°C)</label>
+              <input type="number" class="form-input" id="s-forecast-coldnight-temp"
+                min="-10" max="20" step="0.5" value="${a.forecast_coldnight_temp ?? 8}">
+              <span class="form-hint">Unter dieser Nachttemperatur-Prognose wird der Frühstart ausgelöst.</span>
+            </div>
+            <div class="settings-item">
+              <label>Frühstart-Vorlaufzeit (Stunden)</label>
+              <input type="number" class="form-input" id="s-forecast-advance-hours"
+                min="1" max="8" step="1" value="${a.forecast_advance_hours ?? 3}">
+              <span class="form-hint">Um wie viele Stunden früher soll die Heizung anspringen. Empfehlung: 2–4 Stunden.</span>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="save-forecast-settings">💾 Kälteprognose speichern</button>
           </div>
         </div>
       </details>
@@ -4210,6 +4326,19 @@ class IHCPanel extends HTMLElement {
               </span>
             </div>
             <div class="settings-item">
+              <label>Optimum Start <span style="font-weight:400;font-size:10px">(lernt Aufheizrate je Außentemperatur)</span></label>
+              <select class="form-select" id="optimum-start-enabled">
+                <option value="false" ${!a.optimum_start_enabled ? "selected" : ""}>Deaktiviert</option>
+                <option value="true"  ${a.optimum_start_enabled  ? "selected" : ""}>Aktiviert</option>
+              </select>
+              <span class="form-hint">
+                IHC misst bei jedem Aufheizzyklus wie lange der Raum braucht – getrennt nach Außentemperatur.
+                Bei −5 °C draußen wird länger vorgeheizt als bei +10 °C.
+                Ergebnisse sichtbar im Zimmer-Detail → Verlauf → Lernkurve.
+                Ersetzt das klassische adaptive Vorheizen sobald genug Messungen vorliegen.
+              </span>
+            </div>
+            <div class="settings-item">
               <label>ETA-basiertes Vorheizen</label>
               <div style="font-size:12px;color:var(--secondary-text-color);padding:6px 0">
                 ${a.eta_preheat_enabled
@@ -4386,10 +4515,23 @@ class IHCPanel extends HTMLElement {
         frost_protection_temp:    frostT,
         summer_mode_enabled:      content.querySelector("#summer-enabled").value === "true",
         summer_threshold:         sumT,
+        summer_mode_entity:       content.querySelector("#s-summer-mode-entity")?.value.trim() || "",
         off_use_frost_protection: content.querySelector("#off-use-frost").value === "true",
         heating_period_entity:    content.querySelector("#s-heating-period-entity")?.value.trim() || "",
       });
       this._toast("✓ Temperatur-Einstellungen gespeichert");
+    });
+
+    content.querySelector("#save-forecast-settings")?.addEventListener("click", () => {
+      const cnTemp = parseFloat(content.querySelector("#s-forecast-coldnight-temp").value);
+      const advH   = parseInt(content.querySelector("#s-forecast-advance-hours").value, 10);
+      if (isNaN(cnTemp) || isNaN(advH)) { this._toast("⚠️ Ungültiger Wert"); return; }
+      this._callService("update_global_settings", {
+        forecast_coldnight_enabled: content.querySelector("#s-forecast-coldnight-enabled").value === "true",
+        forecast_coldnight_temp:    cnTemp,
+        forecast_advance_hours:     advH,
+      });
+      this._toast("✓ Kälteprognose gespeichert");
     });
 
     content.querySelector("#save-night-settings").addEventListener("click", () => {
@@ -4619,6 +4761,7 @@ class IHCPanel extends HTMLElement {
       this._callService("update_global_settings", {
         ...(curveSel ? { adaptive_curve_enabled: curveSel.value === "true" } : {}),
         adaptive_preheat_enabled: content.querySelector("#adaptive-preheat-enabled")?.value === "true",
+        optimum_start_enabled:    content.querySelector("#optimum-start-enabled")?.value === "true",
         eta_preheat_enabled:      content.querySelector("#eta-preheat-enabled")?.value === "true",
         vacation_calendar:        content.querySelector("#vacation-calendar")?.value.trim() ?? "",
         adaptive_curve_max_delta: parseFloat(content.querySelector("#adaptive-curve-max-delta")?.value) || 3.0,

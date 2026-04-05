@@ -61,6 +61,11 @@ from .const import (
     CONF_LIMESCALE_TIME, DEFAULT_LIMESCALE_TIME,
     CONF_LIMESCALE_DURATION_MINUTES, DEFAULT_LIMESCALE_DURATION_MINUTES,
     CONF_OUTDOOR_TEMP_SMOOTHING_MINUTES, DEFAULT_OUTDOOR_TEMP_SMOOTHING_MINUTES,
+    CONF_SUMMER_MODE_ENTITY,
+    CONF_FORECAST_COLDNIGHT_ENABLED, DEFAULT_FORECAST_COLDNIGHT_ENABLED,
+    CONF_FORECAST_COLDNIGHT_TEMP, DEFAULT_FORECAST_COLDNIGHT_TEMP,
+    CONF_FORECAST_ADVANCE_HOURS, DEFAULT_FORECAST_ADVANCE_HOURS,
+    CONF_OPTIMUM_START_ENABLED, DEFAULT_OPTIMUM_START_ENABLED,
 )
 from .coordinator import IHCCoordinator
 
@@ -128,6 +133,18 @@ class IHCTotalDemandSensor(_IHCBase, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_icon = "mdi:thermometer-lines"
+    # Exclude large/static attributes from recorder – only scalar state values needed historically
+    _attr_extra_state_attributes_excluded_from_recorder = frozenset({
+        "groups",
+        "presence_entities",
+        "vacation_range",
+        "weather_forecast",
+        # All global config mirrors (never need historical recording – only current value matters)
+        "outdoor_temp_sensor", "heating_switch", "cooling_switch",
+        "solar_entity", "energy_price_entity", "flow_temp_entity", "flow_temp_sensor",
+        "vacation_calendar", "smart_meter_entity", "weather_entity", "sun_entity",
+        "outdoor_humidity_sensor", "summer_mode_entity",
+    })
 
     def __init__(self, coordinator: IHCCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
@@ -193,6 +210,10 @@ class IHCTotalDemandSensor(_IHCBase, SensorEntity):
             "vacation_temp":               cfg.get(CONF_VACATION_TEMP, DEFAULT_VACATION_TEMP),
             "summer_mode_enabled":         cfg.get(CONF_SUMMER_MODE_ENABLED, False),
             "summer_threshold":            cfg.get(CONF_SUMMER_THRESHOLD, DEFAULT_SUMMER_THRESHOLD),
+            "summer_mode_entity":          cfg.get(CONF_SUMMER_MODE_ENTITY, ""),
+            "forecast_coldnight_enabled":  cfg.get(CONF_FORECAST_COLDNIGHT_ENABLED, DEFAULT_FORECAST_COLDNIGHT_ENABLED),
+            "forecast_coldnight_temp":     cfg.get(CONF_FORECAST_COLDNIGHT_TEMP, DEFAULT_FORECAST_COLDNIGHT_TEMP),
+            "forecast_advance_hours":      cfg.get(CONF_FORECAST_ADVANCE_HOURS, DEFAULT_FORECAST_ADVANCE_HOURS),
             "frost_protection_temp":       cfg.get(CONF_FROST_PROTECTION_TEMP, DEFAULT_FROST_PROTECTION_TEMP),
             "off_use_frost_protection":    cfg.get(CONF_OFF_USE_FROST_PROTECTION, DEFAULT_OFF_USE_FROST_PROTECTION),
             "night_setback_enabled":       cfg.get(CONF_NIGHT_SETBACK_ENABLED, False),
@@ -246,6 +267,8 @@ class IHCTotalDemandSensor(_IHCBase, SensorEntity):
             "presence_arrive_delay_minutes":   cfg.get(CONF_PRESENCE_ARRIVE_DELAY_MINUTES, DEFAULT_PRESENCE_ARRIVE_DELAY_MINUTES),
             # Heating period entity (Heizperiode)
             "heating_period_entity":           cfg.get(CONF_HEATING_PERIOD_ENTITY, ""),
+            # Optimum Start (learn heating rate per outdoor-temp bucket)
+            "optimum_start_enabled":           cfg.get(CONF_OPTIMUM_START_ENABLED, DEFAULT_OPTIMUM_START_ENABLED),
         }
 
 
@@ -307,6 +330,15 @@ class IHCRoomDemandSensor(_IHCBase, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_icon = "mdi:thermometer-alert"
+    # Exclude history arrays from recorder – they are large (~8 KB) and IHC manages its own
+    # ring-buffer history; writing them to the DB every 60 s causes significant storage bloat.
+    _attr_extra_state_attributes_excluded_from_recorder = frozenset({
+        "temp_history",
+        "target_history",
+        "mold",
+        "ventilation",
+        "warmup_curve",   # learning data – large list, no time-series value
+    })
 
     def __init__(self, coordinator: IHCCoordinator, entry: ConfigEntry, room: dict) -> None:
         super().__init__(coordinator, entry)
@@ -341,6 +373,9 @@ class IHCRoomDemandSensor(_IHCBase, SensorEntity):
                 "temp_history":   room.get("temp_history", []),          # Roadmap 1.1
                 "target_history": room.get("target_history", []),       # v1.6.2
                 "avg_warmup_minutes": room.get("avg_warmup_minutes"),  # Roadmap 1.1
+                "learned_preheat_minutes": room.get("learned_preheat_minutes"),
+                "avg_cooling_rate": room.get("avg_cooling_rate"),
+                "warmup_curve": room.get("warmup_curve", []),
                 "anomaly": room.get("anomaly"),                        # Roadmap 1.1
                 "room_presence_active": room.get("room_presence_active"),  # Roadmap 1.2
                 "mold": room.get("mold"),                                  # Roadmap 2.0

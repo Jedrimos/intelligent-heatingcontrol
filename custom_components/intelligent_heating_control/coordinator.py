@@ -117,6 +117,13 @@ from .const import (
     CONF_STARTUP_GRACE_SECONDS,
     DEFAULT_STARTUP_GRACE_SECONDS,
     DEFAULT_SUMMER_THRESHOLD,
+    CONF_SUMMER_MODE_ENTITY,
+    CONF_FORECAST_COLDNIGHT_ENABLED,
+    DEFAULT_FORECAST_COLDNIGHT_ENABLED,
+    CONF_FORECAST_COLDNIGHT_TEMP,
+    DEFAULT_FORECAST_COLDNIGHT_TEMP,
+    CONF_FORECAST_ADVANCE_HOURS,
+    DEFAULT_FORECAST_ADVANCE_HOURS,
     DEFAULT_FROST_PROTECTION_TEMP,
     DEFAULT_OFF_USE_FROST_PROTECTION,
     DEFAULT_NIGHT_SETBACK_OFFSET,
@@ -214,6 +221,8 @@ from .const import (
     DEFAULT_ADAPTIVE_CURVE_ENABLED,
     DEFAULT_ADAPTIVE_CURVE_MAX_DELTA,
     CONF_ADAPTIVE_PREHEAT_ENABLED,
+    CONF_OPTIMUM_START_ENABLED,
+    DEFAULT_OPTIMUM_START_ENABLED,
     DEFAULT_ADAPTIVE_PREHEAT_ENABLED,
     # v1.4 – ETA pre-heat, vacation calendar
     CONF_ETA_PREHEAT_ENABLED,
@@ -360,8 +369,16 @@ class IHCCoordinator(
         self._history_last_saved: Optional[datetime] = None
 
         # Roadmap 1.1 – Warmup tracking (for predictive pre-heating)
-        self._warmup_start: Dict[str, Optional[datetime]] = {}    # room_id → when heat request started
-        self._warmup_history: Dict[str, List[float]] = {}          # room_id → list of warmup minutes
+        self._warmup_start: Dict[str, Any] = {}                    # room_id → (start_time, outdoor_temp)
+        self._warmup_history: Dict[str, List[float]] = {}          # room_id → flat warmup minutes (compat)
+
+        # v1.7 – Optimum Start: outdoor-temp-bucketed warmup history
+        self._warmup_history_by_temp: Dict[str, Dict[int, List[float]]] = {}  # room_id → {bucket→[minutes]}
+
+        # v1.7 – Thermal mass: cooling rate tracking
+        self._cooling_rate_history: Dict[str, List[float]] = {}    # room_id → [rate, ...]
+        self._cooling_start: Dict[str, tuple] = {}                  # room_id → (start_time, start_temp, outdoor)
+        self._cooling_prev_demand: Dict[str, float] = {}            # room_id → demand from last cycle
 
         # v1.3 – Adaptive heating curve: cumulative offset applied so far
         self._curve_adaptation_delta: float = 0.0   # °C total shift applied
@@ -399,6 +416,11 @@ class IHCCoordinator(
         # During this window all TRVs are held at frost-protection temp and the heating
         # switch stays off so we never blast heat before window sensors have reported.
         self._startup_time: Optional[datetime] = None
+
+        # Save debounce: avoid hammering the .storage/ file on bursts of rapid mode changes.
+        # All save requests are coalesced into a single write after _SAVE_DEBOUNCE_SECONDS.
+        self._save_debounce_handle: Optional[Any] = None
+        self._SAVE_DEBOUNCE_SECONDS: int = 30
 
         # Manual TRV override detection: track last IHC-set temperature per room
         self._last_ihc_set_temps: Dict[str, float] = {}  # room_id → last temp IHC intentionally set
@@ -561,6 +583,10 @@ class IHCCoordinator(
             self._target_history[room_id] = deque(entries, maxlen=CONF_TEMP_HISTORY_SIZE)
         # Restore warmup history (for predictive pre-heating)
         self._warmup_history = data.get("warmup_history", {})
+        # v1.7 – Restore bucketed warmup history and cooling rates
+        for room_id, buckets in data.get("warmup_history_by_temp", {}).items():
+            self._warmup_history_by_temp[room_id] = {int(k): list(v) for k, v in buckets.items()}
+        self._cooling_rate_history = {k: list(v) for k, v in data.get("cooling_rate_history", {}).items()}
         # Restore adaptive curve state
         self._curve_adaptation_delta = float(data.get("curve_adaptation_delta", 0.0))
         # Restore demand heatmap (v1.6)
@@ -568,8 +594,18 @@ class IHCCoordinator(
             if isinstance(grid, list) and len(grid) == 7:
                 self._demand_heatmap[room_id] = grid
 
+    def _schedule_save(self) -> None:
+        """Request a debounced save – coalesces rapid successive calls into one write."""
+        if self._save_debounce_handle is not None:
+            self._save_debounce_handle.cancel()
+        self._save_debounce_handle = self.hass.loop.call_later(
+            self._SAVE_DEBOUNCE_SECONDS,
+            lambda: self.hass.async_create_task(self._async_save_runtime_state()),
+        )
+
     async def _async_save_runtime_state(self) -> None:
         """Persist current runtime state to Store."""
+        self._save_debounce_handle = None
         await self._store.async_save({
             "system_mode": self._system_mode,
             "room_modes": self._room_modes,
@@ -599,6 +635,9 @@ class IHCCoordinator(
             "curve_adaptation_delta": self._curve_adaptation_delta,
             # Persist demand heatmap (v1.6)
             "demand_heatmap": self._demand_heatmap,
+            # v1.7 – Optimum Start: bucketed warmup history + cooling rates
+            "warmup_history_by_temp": self._warmup_history_by_temp,
+            "cooling_rate_history": self._cooling_rate_history,
         })
 
     def get_config(self) -> dict:
@@ -683,7 +722,7 @@ class IHCCoordinator(
         # write their new hvac_mode to HA without waiting for the next 60s cycle.
         # hvac_mode reads from get_system_mode() which already reflects the new value.
         self.async_update_listeners()
-        self.hass.async_create_task(self._async_save_runtime_state())
+        self._schedule_save()
         self.hass.async_create_task(self.async_request_refresh())
 
     def get_system_mode(self) -> str:
@@ -705,7 +744,7 @@ class IHCCoordinator(
         # new preset_mode/hvac_mode without waiting for the next full 60s cycle.
         # preset_mode reads from get_room_mode() which already reflects the new value.
         self.async_update_listeners()
-        self.hass.async_create_task(self._async_save_runtime_state())
+        self._schedule_save()
         self.hass.async_create_task(self.async_request_refresh())
 
     def get_room_mode(self, room_id: str) -> str:
@@ -731,7 +770,7 @@ class IHCCoordinator(
         self._boost_until[room_id] = datetime.now() + timedelta(minutes=duration_minutes)
         self._room_modes[room_id] = ROOM_MODE_COMFORT
         self.async_update_listeners()
-        self.hass.async_create_task(self._async_save_runtime_state())
+        self._schedule_save()
         self.hass.async_create_task(self.async_request_refresh())
 
     def cancel_room_boost(self, room_id: str) -> None:
@@ -740,7 +779,7 @@ class IHCCoordinator(
         prev_mode = self._room_pre_boost_mode.pop(room_id, ROOM_MODE_AUTO)
         self._room_modes[room_id] = prev_mode
         self.async_update_listeners()
-        self.hass.async_create_task(self._async_save_runtime_state())
+        self._schedule_save()
         self.hass.async_create_task(self.async_request_refresh())
 
     def get_boost_remaining_minutes(self, room_id: str) -> int:
@@ -763,13 +802,35 @@ class IHCCoordinator(
     def _is_summer_mode_active(self) -> bool:
         """Return True if Sommerautomatik should block heating."""
         cfg = self.get_config()
+
+        # External entity takes full control when configured.
+        # ON = summer active (heating blocked); OFF = summer inactive (heating allowed).
+        summer_entity = cfg.get(CONF_SUMMER_MODE_ENTITY, "")
+        if summer_entity:
+            state = self.hass.states.get(summer_entity)
+            if state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                return state.state in ("on", "true", "1")
+
         if not cfg.get(CONF_SUMMER_MODE_ENABLED, False):
             return False
         threshold = float(cfg.get(CONF_SUMMER_THRESHOLD, DEFAULT_SUMMER_THRESHOLD))
         outdoor_temp = self._get_outdoor_temp()
         if outdoor_temp is None:
             return False
-        return outdoor_temp >= threshold
+        if outdoor_temp < threshold:
+            return False
+
+        # Cold night forecast override: if tonight will be cold, suspend summer mode for today
+        # so the schedule-based heating can start normally.
+        if cfg.get(CONF_FORECAST_COLDNIGHT_ENABLED, DEFAULT_FORECAST_COLDNIGHT_ENABLED):
+            forecast = self._get_weather_forecast()
+            if forecast:
+                tonight_min = forecast.get("forecast_today_min")
+                coldnight_temp = float(cfg.get(CONF_FORECAST_COLDNIGHT_TEMP, DEFAULT_FORECAST_COLDNIGHT_TEMP))
+                if tonight_min is not None and tonight_min <= coldnight_temp:
+                    return False  # Cold night predicted – keep heating available
+
+        return True
 
     def _check_room_pir_presence(self, room: dict) -> Optional[bool]:
         """Return True=present / False=absent / None=not configured or pending.
@@ -930,7 +991,7 @@ class IHCCoordinator(
         self._guest_mode_active = True
         self._guest_mode_until = datetime.now() + timedelta(hours=hours) if hours > 0 else None
         _LOGGER.info("IHC: Guest mode activated (duration: %s h)", hours if hours > 0 else "indefinite")
-        self.hass.async_create_task(self._async_save_runtime_state())
+        self._schedule_save()
         self.hass.async_create_task(self.async_request_refresh())
 
     def deactivate_guest_mode(self) -> None:
@@ -939,7 +1000,7 @@ class IHCCoordinator(
         self._guest_mode_active = False
         self._guest_mode_until = None
         _LOGGER.info("IHC: Guest mode deactivated")
-        self.hass.async_create_task(self._async_save_runtime_state())
+        self._schedule_save()
         self.hass.async_create_task(self.async_request_refresh())
 
     def _check_guest_mode_expiry(self) -> None:
@@ -953,7 +1014,7 @@ class IHCCoordinator(
             self._system_mode = SYSTEM_MODE_AUTO
             self._guest_mode_active = False
             self._guest_mode_until = None
-            self.hass.async_create_task(self._async_save_runtime_state())
+            self._schedule_save()
 
     # ------------------------------------------------------------------
     # Roadmap 1.1 – Temperature history
@@ -1240,7 +1301,7 @@ class IHCCoordinator(
         now = datetime.now()
         if self._history_last_saved is None or (now - self._history_last_saved).total_seconds() >= 3600:
             self._history_last_saved = now
-            self.hass.async_create_task(self._async_save_runtime_state())
+            self._schedule_save()
 
         outdoor_temp = self._get_outdoor_temp()
         curve_target = (
@@ -1249,6 +1310,14 @@ class IHCCoordinator(
             else None
         )
         summer_mode = self._is_summer_mode_active()
+
+        # Compute forecast cold night status for data dict / sensor
+        forecast_coldnight_active = False
+        if cfg.get(CONF_FORECAST_COLDNIGHT_ENABLED, DEFAULT_FORECAST_COLDNIGHT_ENABLED):
+            _fc = self._get_weather_forecast()
+            if _fc and _fc.get("forecast_today_min") is not None:
+                _cn_temp = float(cfg.get(CONF_FORECAST_COLDNIGHT_TEMP, DEFAULT_FORECAST_COLDNIGHT_TEMP))
+                forecast_coldnight_active = _fc["forecast_today_min"] <= _cn_temp
 
         room_data: Dict[str, dict] = {}
 
@@ -1438,6 +1507,14 @@ class IHCCoordinator(
                 room_id,
                 was_cold=demand > 0,
                 is_now_warm=demand == 0 and current_temp is not None,
+                outdoor_temp=outdoor_temp,
+            )
+            self._update_cooling_tracking(
+                room_id,
+                demand=demand,
+                current_temp=current_temp,
+                outdoor_temp=outdoor_temp,
+                window_open=window_open,
             )
 
             # Stuck-valve detection: are any TRV valves stuck (calcified / jammed)?
@@ -1470,6 +1547,14 @@ class IHCCoordinator(
                 "temp_history":   self.get_temp_history(room_id),    # Roadmap 1.1
                 "target_history": self.get_target_history(room_id), # v1.6.2 – target temp trend
                 "avg_warmup_minutes": self.get_avg_warmup_minutes(room_id),
+                # v1.7 – Optimum Start: learned warmup + thermal mass
+                "learned_preheat_minutes": (
+                    self.get_learned_preheat_minutes(room_id, outdoor_temp)
+                    if cfg.get(CONF_OPTIMUM_START_ENABLED, DEFAULT_OPTIMUM_START_ENABLED) and outdoor_temp is not None
+                    else None
+                ),
+                "avg_cooling_rate": self.get_avg_cooling_rate(room_id),
+                "warmup_curve": self.get_warmup_curve_data(room_id),
                 "next_period": self.get_next_schedule_period(room_id),  # Roadmap 1.1
                 "anomaly": self._detect_sensor_anomaly(room_id),    # Roadmap 1.1
                 "room_presence_active": room_presence_active,       # Roadmap 1.2
@@ -1572,10 +1657,9 @@ class IHCCoordinator(
                         rdata["target_temp"] = float(room.get(CONF_MIN_TEMP, DEFAULT_MIN_TEMP))
                     self._turn_off_valve_entities(room)
                 elif summer_mode or not self._is_heating_period_active():
-                    # Sommerautomatik or heating period disabled: send frost protection temp to close TRV valves.
-                    # (The TRV's internal thermostat would otherwise try to heat if room cools at night)
-                    frost_temp = self._get_frost_protection_temp()
-                    self._set_valve_entities(room, frost_temp)
+                    # Sommerautomatik or heating period disabled: turn TRVs off completely.
+                    # Setting frost temp keeps them in HEAT mode which misleads users.
+                    self._turn_off_valve_entities(room)
                 elif self.get_boost_remaining_minutes(room_id) > 0:
                     # Boost active: try native HA boost preset first.
                     # Fallback (TRV doesn't support boost preset): send max_temp so the
@@ -1712,6 +1796,8 @@ class IHCCoordinator(
             "heating_active": should_heat,
             "cooling_active": should_cool,
             "summer_mode": summer_mode,
+            "forecast_coldnight_active": forecast_coldnight_active,
+            "forecast_advance_hours": int(cfg.get(CONF_FORECAST_ADVANCE_HOURS, DEFAULT_FORECAST_ADVANCE_HOURS)),
             "startup_grace_active": startup_grace_active,
             "heating_period_active": heating_period_active,
             "night_setback_active": night_setback_active,
