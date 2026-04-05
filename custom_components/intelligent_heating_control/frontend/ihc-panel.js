@@ -1029,6 +1029,8 @@ class IHCPanel extends HTMLElement {
       outdoor_temp:              ot  ? parseFloat(ot.state) : null,
       rooms_demanding:           a.rooms_demanding || 0,
       summer_mode:               a.summer_mode || false,
+      forecast_coldnight_active: a.forecast_coldnight_active || false,
+      forecast_advance_hours:    a.forecast_advance_hours ?? 3,
       night_setback_active:      a.night_setback_active || false,
       presence_away_active:      a.presence_away_active || false,
       heating_runtime_today:     rt  ? parseFloat(rt.state) || 0 : (a.heating_runtime_today || 0),

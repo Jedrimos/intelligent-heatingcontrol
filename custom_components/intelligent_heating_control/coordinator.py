@@ -1764,6 +1764,7 @@ class IHCCoordinator(
             "cooling_active": should_cool,
             "summer_mode": summer_mode,
             "forecast_coldnight_active": forecast_coldnight_active,
+            "forecast_advance_hours": int(cfg.get(CONF_FORECAST_ADVANCE_HOURS, DEFAULT_FORECAST_ADVANCE_HOURS)),
             "startup_grace_active": startup_grace_active,
             "heating_period_active": heating_period_active,
             "night_setback_active": night_setback_active,
