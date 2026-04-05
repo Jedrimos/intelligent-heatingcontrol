@@ -111,6 +111,19 @@ DEFAULT_HA_SCHEDULE_OFF_MODE: Final = "eco"  # fallback when no HA schedule acti
 DEFAULT_RADIATOR_KW: Final = 1.0             # kW – sensible default for a single-radiator room
 DEFAULT_HKV_FACTOR: Final = 0.083           # kWh per Einheit (typical district-heating value)
 DEFAULT_SUMMER_THRESHOLD: Final = 18.0
+
+# External entity override for summer mode (input_boolean.* or binary_sensor.*)
+# ON = summer active (heating blocked); OFF = heating allowed
+CONF_SUMMER_MODE_ENTITY: Final = "summer_mode_entity"
+
+# Forecast cold-night: suspend summer mode and start heating earlier when tonight will be cold
+CONF_FORECAST_COLDNIGHT_ENABLED: Final = "forecast_coldnight_enabled"
+DEFAULT_FORECAST_COLDNIGHT_ENABLED: Final = False
+CONF_FORECAST_COLDNIGHT_TEMP: Final = "forecast_coldnight_temp"
+DEFAULT_FORECAST_COLDNIGHT_TEMP: Final = 8.0
+CONF_FORECAST_ADVANCE_HOURS: Final = "forecast_advance_hours"
+DEFAULT_FORECAST_ADVANCE_HOURS: Final = 3
+
 DEFAULT_FROST_PROTECTION_TEMP: Final = 7.0
 DEFAULT_OFF_USE_FROST_PROTECTION: Final = False  # default: actually turn off TRVs in OFF mode
 DEFAULT_NIGHT_SETBACK_OFFSET: Final = 2.0
