@@ -230,6 +230,15 @@ from .const import (
     CONF_VACATION_CALENDAR,
     CONF_VACATION_CALENDAR_KEYWORD,
     DEFAULT_VACATION_CALENDAR_KEYWORD,
+    # v1.8 – Holiday calendar
+    CONF_HOLIDAY_CALENDAR,
+    CONF_HOLIDAY_SCHEDULE_MODE,
+    DEFAULT_HOLIDAY_SCHEDULE_MODE,
+    # v1.8 – Peak Shaving
+    CONF_PEAK_SHAVING_ENABLED,
+    DEFAULT_PEAK_SHAVING_ENABLED,
+    CONF_PEAK_SHAVING_DELAY_MINUTES,
+    DEFAULT_PEAK_SHAVING_DELAY_MINUTES,
     # v1.5 – Cooling target, PID, smart meter, price forecast
     CONF_COOLING_TARGET_TEMP,
     DEFAULT_COOLING_TARGET_TEMP,
@@ -468,6 +477,17 @@ class IHCCoordinator(
         # Moving average over the last N minutes filters out fast sun/cloud transitions that would
         # otherwise cause the heating curve to oscillate and the boiler to hunt.
         self._outdoor_temp_buffer: deque = deque(maxlen=60)  # max 60 readings = 60 min history
+
+        # v1.8 – CO₂ rate-of-rise tracking per room: {room_id: [(datetime, ppm), ...]}
+        self._co2_history: Dict[str, list] = {}
+
+        # v1.8 – Peak Shaving: track boiler start time and previous heat state
+        self._was_heating: bool = False
+        self._heating_start_time: Optional[datetime] = None
+
+        # v1.8 – Holiday calendar: cached per-cycle flags (set in _async_update_data)
+        self._holiday_active: bool = False
+        self._holiday_schedule_mode: str = "weekend"
 
         # v1.6 – Anforderungs-Heatmap: 7-day × 24-hour EMA grid per room
         # Index [weekday 0=Mon…6][hour 0…23] → smoothed demand 0-100
@@ -1321,6 +1341,18 @@ class IHCCoordinator(
 
         room_data: Dict[str, dict] = {}
 
+        # v1.8 – Holiday calendar: check if a holiday/school-holiday event is currently active
+        holiday_active = False
+        holiday_calendar = cfg.get(CONF_HOLIDAY_CALENDAR)
+        if holiday_calendar:
+            cal_state = self.hass.states.get(holiday_calendar)
+            if cal_state and cal_state.state in ("on", "1", "true"):
+                holiday_active = True
+        holiday_schedule_mode = cfg.get(CONF_HOLIDAY_SCHEDULE_MODE, DEFAULT_HOLIDAY_SCHEDULE_MODE)
+        # Store as instance variables so room_logic.py (_calculate_target_temp) can access them
+        self._holiday_active = holiday_active
+        self._holiday_schedule_mode = holiday_schedule_mode
+
         solar_boost = self._get_solar_boost()
         # Use enhanced price-forecast offset (Tibber / Nordpool hourly aware)
         price_eco_offset = self._get_price_forecast_offset()
@@ -1403,9 +1435,6 @@ class IHCCoordinator(
 
             target_temp, meta = self._calculate_target_temp(room, outdoor_temp)
 
-            # target_history logged after target_temp is known (v1.6.2)
-            self._update_target_history(room_id, target_temp)
-
             # Emergency frost protection when system is OFF (and not already frost-protecting):
             # If outdoor temp is below 0°C AND room temp is very cold (<10°C) AND window is closed,
             # override to frost protection to prevent pipe freezing.
@@ -1446,6 +1475,17 @@ class IHCCoordinator(
             if cold_boost > 0 and meta.get("source") not in ("frost_protection", "system_away", "system_vacation", "room_off"):
                 target_temp = min(float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP)), target_temp + cold_boost)
                 meta["cold_boost"] = cold_boost
+
+            # v1.8 – CO₂ predictive pre-heat boost:
+            # If CO₂ will hit threshold_bad within 5 minutes, raise target by +1 °C so
+            # the room is already warm when the window needs to be opened for ventilation.
+            if meta.get("source") not in ("frost_protection", "system_away", "system_vacation", "room_off"):
+                _co2_ppm_now = self._get_room_co2(room)
+                if _co2_ppm_now is not None:
+                    _co2_eta = self._get_co2_ventilation_eta(room_id, room, _co2_ppm_now)
+                    if _co2_eta is not None and _co2_eta <= 5.0:
+                        target_temp = min(float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP)), target_temp + 1.0)
+                        meta["co2_preheat_boost"] = True
 
             # Window restore mode: snapshot/restore target_temp around window open events
             prev_win = self._prev_window_open.get(room_id, False)
@@ -1503,6 +1543,22 @@ class IHCCoordinator(
             # (e.g. "41.7% total demand, 3 rooms demanding" despite all rooms showing 0%).
             self._controller.override_demand(room_id, demand)
 
+            # Optimum Stop: if thermal mass will coast room to next setpoint, skip heating now
+            optimum_stop_info: dict = {"active": False}
+            if (
+                cfg.get(CONF_OPTIMUM_START_ENABLED, DEFAULT_OPTIMUM_START_ENABLED)
+                and demand > 0
+                and not window_open
+                and room_mode not in (ROOM_MODE_OFF, ROOM_MODE_MANUAL, ROOM_MODE_COMFORT)
+            ):
+                optimum_stop_info = self.get_optimum_stop_info(
+                    room_id, current_temp, outdoor_temp, room
+                )
+                if optimum_stop_info.get("active"):
+                    demand = 0.0
+                    self._controller.override_demand(room_id, 0.0)
+                    meta["optimum_stop"] = True
+
             self._update_warmup_tracking(
                 room_id,
                 was_cold=demand > 0,
@@ -1534,6 +1590,9 @@ class IHCCoordinator(
             if _loop_trv_mode:
                 display_target = round(target_temp / TRV_SETPOINT_STEP) * TRV_SETPOINT_STEP
 
+            # target_history logged with the FINAL display_target (includes all boosts/adjustments)
+            self._update_target_history(room_id, display_target)
+
             room_data[room_id] = {
                 "ventilation": None,  # filled below after outdoor_humidity is known
                 "name": room.get(CONF_ROOM_NAME, room_id),
@@ -1555,6 +1614,9 @@ class IHCCoordinator(
                 ),
                 "avg_cooling_rate": self.get_avg_cooling_rate(room_id),
                 "warmup_curve": self.get_warmup_curve_data(room_id),
+                "optimum_stop_active": optimum_stop_info.get("active", False),
+                "optimum_stop_minutes": optimum_stop_info.get("minutes_until_change"),
+                "optimum_stop_predicted": optimum_stop_info.get("predicted_temp"),
                 "next_period": self.get_next_schedule_period(room_id),  # Roadmap 1.1
                 "anomaly": self._detect_sensor_anomaly(room_id),    # Roadmap 1.1
                 "room_presence_active": room_presence_active,       # Roadmap 1.2
@@ -1597,6 +1659,32 @@ class IHCCoordinator(
             should_cool = False
         total_demand = self._controller.get_total_demand()
         rooms_demanding = self._controller.get_rooms_demanding()
+
+        # v1.8 – Peak Shaving: stagger room demand during first N minutes after boiler start
+        peak_shaving_active = False
+        peak_shaving_enabled = bool(cfg.get(CONF_PEAK_SHAVING_ENABLED, DEFAULT_PEAK_SHAVING_ENABLED))
+        if peak_shaving_enabled:
+            if should_heat and not self._was_heating:
+                # Boiler just started
+                self._heating_start_time = dt_util.utcnow()
+            elif not should_heat:
+                self._heating_start_time = None
+            delay = int(cfg.get(CONF_PEAK_SHAVING_DELAY_MINUTES, DEFAULT_PEAK_SHAVING_DELAY_MINUTES))
+            if (self._heating_start_time is not None and
+                    (dt_util.utcnow() - self._heating_start_time).total_seconds() / 60 < delay):
+                peak_shaving_active = True
+                # Cap demand of lower-priority rooms (bottom 50%) at 30% during shaving window
+                all_demanding = [
+                    (rid, room_data[rid].get("demand", 0))
+                    for rid in room_data
+                    if room_data[rid].get("demand", 0) > 0
+                ]
+                all_demanding.sort(key=lambda x: -x[1])  # Sort by demand desc (highest first)
+                cutoff = max(1, len(all_demanding) // 2)
+                for i, (rid, _) in enumerate(all_demanding):
+                    if i >= cutoff:
+                        room_data[rid]["demand"] = min(room_data[rid]["demand"], 30.0)
+        self._was_heating = should_heat
 
         # Track energy / runtime
         self._update_runtime_tracking(should_heat, room_data)
@@ -1777,6 +1865,15 @@ class IHCCoordinator(
                 )
                 room_data[room_id]["ventilation"] = v_advice
                 room_data[room_id]["co2_ppm"] = v_advice["co2_ppm"] if v_advice else None
+
+                # v1.8 – CO₂ predictive: update rate tracking + compute ETA
+                co2_ppm_val = self._get_room_co2(room)
+                if co2_ppm_val is not None:
+                    self._update_co2_history(room_id, co2_ppm_val)
+                    co2_eta = self._get_co2_ventilation_eta(room_id, room, co2_ppm_val)
+                else:
+                    co2_eta = None
+                room_data[room_id]["co2_ventilation_eta_minutes"] = co2_eta
             outdoor_humidity_out = outdoor_humidity
         except Exception:
             _LOGGER.debug("IHC: Ventilation advice calculation failed", exc_info=True)
@@ -1787,6 +1884,20 @@ class IHCCoordinator(
         if self._guest_mode_active and self._guest_mode_until:
             remaining = (self._guest_mode_until - datetime.now()).total_seconds() / 60
             guest_remaining_minutes = max(0, round(remaining))
+
+        # v1.8 – Extract hourly price forecast for frontend display
+        price_forecast: list = []
+        price_entity = cfg.get(CONF_ENERGY_PRICE_ENTITY)
+        if price_entity:
+            _ps = self.hass.states.get(price_entity)
+            if _ps and _ps.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                forecast_attr = cfg.get(CONF_PRICE_FORECAST_ATTRIBUTE, DEFAULT_PRICE_FORECAST_ATTRIBUTE)
+                raw_prices = _ps.attributes.get(forecast_attr, [])
+                if raw_prices and isinstance(raw_prices, list):
+                    try:
+                        price_forecast = [round(float(p), 4) for p in raw_prices[:24]]
+                    except (ValueError, TypeError):
+                        price_forecast = []
 
         return {
             "outdoor_temp": outdoor_temp,
@@ -1831,6 +1942,13 @@ class IHCCoordinator(
             "adaptive_curve_delta": self._curve_adaptation_delta,  # v1.3 – debug info
             "curve_adaptation_enabled": cfg.get(CONF_ADAPTIVE_CURVE_ENABLED, DEFAULT_ADAPTIVE_CURVE_ENABLED),
             "outdoor_humidity": outdoor_humidity_out,
+            # v1.8 – Holiday calendar
+            "holiday_active": holiday_active,
+            "holiday_schedule_mode": holiday_schedule_mode,
+            # v1.8 – Peak Shaving
+            "peak_shaving_active": peak_shaving_active,
+            # v1.8 – Hourly energy price forecast (Tibber/Nordpool)
+            "price_forecast": price_forecast,
             "rooms": room_data,
             "groups": self.get_groups(),
             "debug": self._controller.get_debug_info(),

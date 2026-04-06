@@ -225,6 +225,11 @@ CONF_VACATION_CALENDAR: Final = "vacation_calendar"         # calendar.* entity 
 CONF_VACATION_CALENDAR_KEYWORD: Final = "vacation_calendar_keyword"  # keyword to match in event summary
 DEFAULT_VACATION_CALENDAR_KEYWORD: Final = "urlaub"
 
+# v1.8 – Holiday / school-holiday calendar
+CONF_HOLIDAY_CALENDAR: Final = "holiday_calendar"            # calendar.* entity for public holidays / school holidays
+CONF_HOLIDAY_SCHEDULE_MODE: Final = "holiday_schedule_mode"  # "weekend" | "comfort"
+DEFAULT_HOLIDAY_SCHEDULE_MODE: Final = "weekend"
+
 # v1.3 – Adaptive heating curve
 CONF_ADAPTIVE_CURVE_ENABLED: Final = "adaptive_curve_enabled"
 CONF_ADAPTIVE_CURVE_MAX_DELTA: Final = "adaptive_curve_max_delta"   # max total °C shift allowed
@@ -453,6 +458,12 @@ CONF_LIMESCALE_TIME: Final = "limescale_time"
 DEFAULT_LIMESCALE_TIME: Final = "10:00"      # Uhrzeit für Kalkschutz-Übung
 CONF_LIMESCALE_DURATION_MINUTES: Final = "limescale_duration_minutes"
 DEFAULT_LIMESCALE_DURATION_MINUTES: Final = 5  # Minuten vollständig geöffnet
+
+# v1.8 – Peak Shaving: stagger room demand activation after boiler start
+CONF_PEAK_SHAVING_ENABLED: Final = "peak_shaving_enabled"
+DEFAULT_PEAK_SHAVING_ENABLED: Final = False
+CONF_PEAK_SHAVING_DELAY_MINUTES: Final = "peak_shaving_delay_minutes"
+DEFAULT_PEAK_SHAVING_DELAY_MINUTES: Final = 3
 
 
 # v1.7 – Heizgruppen: Zusammenfassen von Zimmern zu gemeinsam steuerbaren Gruppen

@@ -171,6 +171,24 @@ class ScheduleManager:
             "mode": period.get("mode", "manual"),
         }
 
+    def get_active_period_end_minutes(self, now: Optional[datetime] = None) -> Optional[float]:
+        """Return minutes until the currently active period ends, or None if no active period."""
+        if now is None:
+            now = datetime.now()
+        active = self.get_active_period(now)
+        if active is None:
+            return None
+        try:
+            end_h, end_m = [int(x) for x in active["end"].split(":")]
+        except (KeyError, ValueError):
+            return None
+        now_minutes = now.hour * 60 + now.minute
+        end_minutes = end_h * 60 + end_m
+        diff = end_minutes - now_minutes
+        if diff < 0:
+            diff += 24 * 60  # overnight period
+        return float(diff)
+
     def update_schedules(self, schedules: list) -> None:
         """Update schedules."""
         self._schedules = schedules

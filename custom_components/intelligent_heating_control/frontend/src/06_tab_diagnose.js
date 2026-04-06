@@ -170,6 +170,9 @@
         </td>` : ""}
         ${hasCo2 ? `<td style="padding:6px 8px;border-bottom:1px solid var(--divider-color);font-size:12px">
           ${r.co2_ppm > 0 ? `<span style="color:${r.co2_ppm > (r.co2_threshold_bad || 1200) ? "#c62828" : r.co2_ppm > (r.co2_threshold_good || 800) ? "#fb8c00" : "#43a047"}" title="CO₂-Konzentration">🌬️ ${r.co2_ppm}</span>` : "—"}
+          ${r.co2_ventilation_eta_minutes != null && r.co2_ventilation_eta_minutes <= 30
+            ? `<div><span style="font-size:10px;padding:1px 4px;border-radius:6px;background:${r.co2_ventilation_eta_minutes <= 5 ? 'color-mix(in srgb,#ef5350 20%,transparent)' : 'color-mix(in srgb,#fb8c00 20%,transparent)'};color:var(--primary-text-color)" title="Geschätzte Zeit bis CO₂-Grenzwert">💨 ${r.co2_ventilation_eta_minutes <= 0 ? 'Jetzt!' : r.co2_ventilation_eta_minutes.toFixed(0) + ' min'}</span></div>`
+            : ""}
         </td>` : ""}
         <td style="font-size:12px;padding:6px 8px;border-bottom:1px solid var(--divider-color)">${modeLabel}</td>
         <td style="font-size:12px;padding:6px 8px;border-bottom:1px solid var(--divider-color);color:var(--secondary-text-color)">${statusParts.length ? statusParts.join(" · ") : ""}</td>
@@ -350,6 +353,56 @@
           ).join("")}
         </div>`;
       content.appendChild(heatmapCard);
+    }
+
+    // ── v1.8 Energiepreis-Forecast Chart (Tibber/Nordpool) ────────────────────
+    if (g.price_forecast && g.price_forecast.length > 0) {
+      const prices = g.price_forecast;
+      const currentHour = new Date().getHours();
+      const maxP = Math.max(...prices);
+      const minP = Math.min(...prices);
+      const avgP = prices.reduce((a, b) => a + b, 0) / prices.length;
+      const rangeP = maxP - minP || 0.01;
+      const W = 560, H = 120, padL = 40, padR = 8, padT = 10, padB = 24;
+      const barW = (W - padL - padR) / prices.length;
+      const bars = prices.map((p, i) => {
+        const barH = Math.max(2, ((p - minP) / rangeP) * (H - padT - padB));
+        const y = padT + (H - padT - padB) - barH;
+        const isCurrent = i === currentHour;
+        const color = p > avgP * 1.3 ? "#ef5350" : p < avgP * 0.7 ? "#66bb6a" : "#fb8c00";
+        const highlight = isCurrent ? `stroke="white" stroke-width="2"` : "";
+        return `<rect x="${(padL + i * barW + 1).toFixed(1)}" y="${y.toFixed(1)}" width="${(barW - 2).toFixed(1)}" height="${barH.toFixed(1)}"
+          fill="${color}" ${highlight} rx="2" opacity="${isCurrent ? 1 : 0.7}"
+          title="${i}:00 – ${p.toFixed(3)} €/kWh"/>`;
+      }).join("");
+      const avgY = padT + (H - padT - padB) - ((avgP - minP) / rangeP) * (H - padT - padB);
+      const xLabels = [0, 6, 12, 18, 23].map(i =>
+        `<text x="${(padL + i * barW + barW / 2).toFixed(1)}" y="${H - padB + 14}" text-anchor="middle" font-size="9" fill="var(--secondary-text-color)">${i}:00</text>`
+      ).join("");
+      const priceCard = document.createElement("details");
+      priceCard.className = "ihc-card";
+      priceCard.open = true;
+      priceCard.innerHTML = `
+        <summary><span class="ihc-card-title">💶 Energiepreis-Verlauf (heute)</span></summary>
+        <div class="ihc-card-body">
+          <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:8px">
+            Aktuell: <strong>${prices[currentHour] != null ? prices[currentHour].toFixed(3) + ' €/kWh' : '—'}</strong>
+            · Ø: ${avgP.toFixed(3)} €/kWh
+            · <span style="color:#ef5350">■</span> teuer &gt;130%
+            · <span style="color:#fb8c00">■</span> normal
+            · <span style="color:#66bb6a">■</span> günstig &lt;70%
+          </div>
+          <div style="overflow-x:auto">
+            <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:${H}px">
+              ${bars}
+              <line x1="${padL}" y1="${avgY.toFixed(1)}" x2="${W - padR}" y2="${avgY.toFixed(1)}"
+                stroke="var(--secondary-text-color)" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>
+              <text x="${padL - 4}" y="${(avgY + 4).toFixed(1)}" font-size="8" text-anchor="end" fill="var(--secondary-text-color)">Ø</text>
+              ${xLabels}
+            </svg>
+          </div>
+        </div>`;
+      content.appendChild(priceCard);
     }
 
     const setSystemModeBtn = content.querySelector("#diag-set-system-mode");

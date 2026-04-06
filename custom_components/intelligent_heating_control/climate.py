@@ -390,6 +390,7 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "co2_threshold_good": room_cfg.get(CONF_CO2_THRESHOLD_GOOD, DEFAULT_CO2_THRESHOLD_GOOD),
             "co2_threshold_bad": room_cfg.get(CONF_CO2_THRESHOLD_BAD, DEFAULT_CO2_THRESHOLD_BAD),
             "co2_ppm": d.get("co2_ppm"),
+            "co2_ventilation_eta_minutes": d.get("co2_ventilation_eta_minutes"),
             "ventilation": d.get("ventilation"),
             # TRV sensor data integration (optional)
             "trv_temp_weight": room_cfg.get(CONF_TRV_TEMP_WEIGHT, DEFAULT_TRV_TEMP_WEIGHT),
@@ -410,6 +411,10 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "learned_preheat_minutes": d.get("learned_preheat_minutes"),
             "avg_cooling_rate": d.get("avg_cooling_rate"),
             "warmup_curve": d.get("warmup_curve", []),
+            # Optimum Stop (Abschaltzeit-Optimierung)
+            "optimum_stop_active": d.get("optimum_stop_active", False),
+            "optimum_stop_minutes": d.get("optimum_stop_minutes"),
+            "optimum_stop_predicted": d.get("optimum_stop_predicted"),
         }
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
