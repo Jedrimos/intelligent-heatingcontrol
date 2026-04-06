@@ -410,6 +410,10 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "learned_preheat_minutes": d.get("learned_preheat_minutes"),
             "avg_cooling_rate": d.get("avg_cooling_rate"),
             "warmup_curve": d.get("warmup_curve", []),
+            # Optimum Stop (Abschaltzeit-Optimierung)
+            "optimum_stop_active": d.get("optimum_stop_active", False),
+            "optimum_stop_minutes": d.get("optimum_stop_minutes"),
+            "optimum_stop_predicted": d.get("optimum_stop_predicted"),
         }
 
     async def async_set_temperature(self, **kwargs: Any) -> None:

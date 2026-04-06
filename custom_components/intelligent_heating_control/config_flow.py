@@ -131,6 +131,15 @@ from .const import (
     DEFAULT_ETA_PREHEAT_THRESHOLD_MINUTES,
     CONF_VACATION_CALENDAR,
     CONF_VACATION_CALENDAR_KEYWORD,
+    # v1.8 – Holiday calendar
+    CONF_HOLIDAY_CALENDAR,
+    CONF_HOLIDAY_SCHEDULE_MODE,
+    DEFAULT_HOLIDAY_SCHEDULE_MODE,
+    # v1.8 – Peak Shaving
+    CONF_PEAK_SHAVING_ENABLED,
+    DEFAULT_PEAK_SHAVING_ENABLED,
+    CONF_PEAK_SHAVING_DELAY_MINUTES,
+    DEFAULT_PEAK_SHAVING_DELAY_MINUTES,
     # New features
     CONF_TRV_CALIBRATIONS,
     CONF_ROOM_TEMP_THRESHOLD,
@@ -673,6 +682,15 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
                 CONF_VACATION_CALENDAR_KEYWORD,
                 default=cfg.get(CONF_VACATION_CALENDAR_KEYWORD, DEFAULT_VACATION_CALENDAR_KEYWORD)
             ): selector.selector({"text": {}}),
+            # --- v1.8 Holiday / school-holiday calendar ---
+            vol.Optional(
+                CONF_HOLIDAY_CALENDAR,
+                default=cfg.get(CONF_HOLIDAY_CALENDAR, "")
+            ): selector.selector({"text": {}}),
+            vol.Optional(
+                CONF_HOLIDAY_SCHEDULE_MODE,
+                default=cfg.get(CONF_HOLIDAY_SCHEDULE_MODE, DEFAULT_HOLIDAY_SCHEDULE_MODE)
+            ): selector.selector({"select": {"options": ["weekend", "comfort"]}}),
             # --- Startup grace period (Zigbee/Z-Wave sensor warmup) ---
             vol.Optional(
                 CONF_STARTUP_GRACE_SECONDS,
@@ -707,6 +725,17 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
                 default=int(cfg.get(CONF_LIMESCALE_DURATION_MINUTES, DEFAULT_LIMESCALE_DURATION_MINUTES))
             ): selector.selector({
                 "number": {"min": 1, "max": 30, "step": 1, "unit_of_measurement": "min", "mode": "box"}
+            }),
+            # --- v1.8 Peak Shaving ---
+            vol.Optional(
+                CONF_PEAK_SHAVING_ENABLED,
+                default=bool(cfg.get(CONF_PEAK_SHAVING_ENABLED, DEFAULT_PEAK_SHAVING_ENABLED))
+            ): selector.selector({"boolean": {}}),
+            vol.Optional(
+                CONF_PEAK_SHAVING_DELAY_MINUTES,
+                default=int(cfg.get(CONF_PEAK_SHAVING_DELAY_MINUTES, DEFAULT_PEAK_SHAVING_DELAY_MINUTES))
+            ): selector.selector({
+                "number": {"min": 1, "max": 15, "step": 1, "unit_of_measurement": "min", "mode": "slider"}
             }),
         })
         return self.async_show_form(step_id="global_settings", data_schema=vol.Schema(schema_dict), errors=errors)

@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional
+from typing import Dict, List, Optional
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_HUMIDITY_SENSOR,
@@ -212,6 +213,52 @@ class ComfortManagerMixin:
             "co2_ppm": round(co2, 0) if co2 is not None else None,
             "room_humidity": room_humidity,
         }
+
+    def _update_co2_history(self, room_id: str, co2_ppm: float) -> None:
+        """Track CO₂ readings with timestamps for rate-of-rise calculation."""
+        now = dt_util.utcnow()
+        history = self._co2_history.setdefault(room_id, [])
+        history.append((now, co2_ppm))
+        # Keep last 10 readings
+        if len(history) > 10:
+            history.pop(0)
+
+    def _get_co2_ventilation_eta(self, room_id: str, room: dict, current_co2: float) -> Optional[float]:
+        """
+        Estimate minutes until CO₂ exceeds threshold_bad.
+        Returns None if not enough data or CO₂ not rising.
+        Returns 0.0 if already at/above threshold.
+        """
+        history = self._co2_history.get(room_id, [])
+        if len(history) < 3:
+            return None
+
+        # Use last 3 readings for rate calculation
+        recent = history[-3:]
+        # Linear regression of CO₂ vs time (minutes since first reading)
+        times = [(t - recent[0][0]).total_seconds() / 60.0 for t, _ in recent]
+        values = [v for _, v in recent]
+
+        n = len(times)
+        sum_t = sum(times)
+        sum_v = sum(values)
+        sum_tv = sum(t * v for t, v in zip(times, values))
+        sum_tt = sum(t * t for t in times)
+
+        denom = n * sum_tt - sum_t * sum_t
+        if abs(denom) < 1e-6:
+            return None
+
+        rate = (n * sum_tv - sum_t * sum_v) / denom  # ppm per minute
+        if rate <= 0.1:  # Not rising meaningfully
+            return None
+
+        bad_threshold = float(room.get(CONF_CO2_THRESHOLD_BAD, DEFAULT_CO2_THRESHOLD_BAD))
+        if current_co2 >= bad_threshold:
+            return 0.0  # Already bad
+
+        eta_minutes = (bad_threshold - current_co2) / rate
+        return round(eta_minutes, 1)
 
     @staticmethod
     def _calculate_felt_temperature(temp: float, humidity: float) -> float:

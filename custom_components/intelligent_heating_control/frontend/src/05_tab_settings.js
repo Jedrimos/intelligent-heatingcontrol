@@ -803,6 +803,21 @@
                 value="${a.vacation_calendar ?? ''}" data-ep-domains="calendar" autocomplete="off">
               <span class="form-hint">Kalender-Entität aus HA. Termine die das Schlüsselwort „urlaub" im Namen enthalten schalten automatisch den Urlaubs-Modus ein.</span>
             </div>
+            <div class="settings-item">
+              <label>Feiertags-/Ferienkalender</label>
+              <input type="text" class="form-input" id="holiday-calendar"
+                placeholder="calendar.feiertage (leer = aus)"
+                value="${a.holiday_calendar ?? ''}" data-ep-domains="calendar" autocomplete="off">
+              <span class="form-hint">HA-Kalender-Entität. Wenn ein Termin aktiv → Wochenend-Zeitplan oder Komfortmodus.
+                ${g.holiday_active ? '<strong style="color:#1565c0">📅 Feiertag/Ferien aktiv</strong>' : ""}</span>
+            </div>
+            <div class="settings-item">
+              <label>Feiertagsmodus</label>
+              <select class="form-select" id="holiday-schedule-mode">
+                <option value="weekend" ${(a.holiday_schedule_mode || 'weekend') === 'weekend' ? 'selected' : ''}>Wochenend-Zeitplan nutzen</option>
+                <option value="comfort" ${a.holiday_schedule_mode === 'comfort' ? 'selected' : ''}>Komforttemperatur halten</option>
+              </select>
+            </div>
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="save-intelligent-settings">💾 Intelligente Regelung speichern</button>
@@ -858,6 +873,37 @@
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="save-limescale-settings">💾 Kalkschutz speichern</button>
+          </div>
+        </div>
+      </details>
+
+      <!-- ── Peak Shaving ───────────────────────────── -->
+      <details class="ihc-card" ${a.peak_shaving_enabled ? "open" : ""}>
+        <summary>
+          <span class="ihc-card-title">⚡ Peak Shaving – Heizungsstaffelung
+            ${a.peak_shaving_enabled ? activeBadge("Aktiv") : ""}
+            ${g.peak_shaving_active ? activeBadge("Läuft","warn") : ""}
+          </span>
+        </summary>
+        <div class="ihc-card-body">
+          <div class="info-box">Verhindert Lastspitzen beim Hochfahren der Heizung. Räume mit niedrigerer Priorität werden gestaffelt zugeschaltet, statt alle gleichzeitig.</div>
+          <div class="settings-grid">
+            <div class="settings-item">
+              <label>Peak Shaving aktiviert</label>
+              <select class="form-select" id="peak-shaving-enabled">
+                <option value="false" ${!a.peak_shaving_enabled ? "selected" : ""}>Deaktiviert</option>
+                <option value="true"  ${a.peak_shaving_enabled  ? "selected" : ""}>Aktiviert</option>
+              </select>
+            </div>
+            <div class="settings-item">
+              <label>Staffelungsverzögerung (min)</label>
+              <input type="number" class="form-input" id="peak-shaving-delay" min="1" max="15" step="1"
+                value="${a.peak_shaving_delay_minutes ?? 3}">
+              <span class="form-hint">Nach dem Einschalten der Heizung werden Räume mit niedrigerer Anforderung erst nach dieser Zeit voll gezählt.</span>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="save-peak-shaving-settings">💾 Peak Shaving speichern</button>
           </div>
         </div>
       </details>
@@ -1215,8 +1261,18 @@
         eta_preheat_enabled:      content.querySelector("#eta-preheat-enabled")?.value === "true",
         vacation_calendar:        content.querySelector("#vacation-calendar")?.value.trim() ?? "",
         adaptive_curve_max_delta: parseFloat(content.querySelector("#adaptive-curve-max-delta")?.value) || 3.0,
+        holiday_calendar:         content.querySelector("#holiday-calendar")?.value.trim() ?? "",
+        holiday_schedule_mode:    content.querySelector("#holiday-schedule-mode")?.value ?? "weekend",
       });
       this._toast("✓ Intelligente Regelung gespeichert");
+    });
+
+    content.querySelector("#save-peak-shaving-settings")?.addEventListener("click", () => {
+      this._callService("update_global_settings", {
+        peak_shaving_enabled:       content.querySelector("#peak-shaving-enabled")?.value === "true",
+        peak_shaving_delay_minutes: parseInt(content.querySelector("#peak-shaving-delay")?.value, 10) || 3,
+      });
+      this._toast("✓ Peak Shaving gespeichert");
     });
 
     content.querySelector("#save-limescale-settings")?.addEventListener("click", () => {

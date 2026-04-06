@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import math
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from homeassistant.const import STATE_ON
@@ -234,6 +234,81 @@ class RoomLogicMixin:
             return round((sorted_h[mid - 1] + sorted_h[mid]) / 2.0, 4)
         return round(sorted_h[mid], 4)
 
+    def get_optimum_stop_info(
+        self,
+        room_id: str,
+        current_temp: Optional[float],
+        outdoor_temp: Optional[float],
+        room: dict,
+    ) -> dict:
+        """
+        Optimum Stop – Abschaltzeit-Optimierung mit Thermischer Masse.
+
+        Determines whether heating can be stopped early because the room's thermal
+        inertia will coast the temperature down to the next scheduled setpoint by the
+        time the schedule changes.
+
+        Returns a dict:
+          {
+            "active": bool,           True if heating should be withheld now
+            "minutes_until_change": float | None,
+            "predicted_temp": float | None,   temp at period-change time without heating
+            "next_target": float | None,
+          }
+        """
+        result: dict = {"active": False, "minutes_until_change": None,
+                        "predicted_temp": None, "next_target": None}
+
+        if current_temp is None or outdoor_temp is None:
+            return result
+
+        cooling_rate = self.get_avg_cooling_rate(room_id)
+        if cooling_rate is None or cooling_rate <= 0:
+            return result
+
+        # Only activate when room is warmer than outdoor (heat flows out)
+        if current_temp <= outdoor_temp:
+            return result
+
+        # Get current period end and next period target from IHC schedules
+        active_scheds = room.get("schedules", [])
+        if not active_scheds:
+            return result
+
+        mgr = self._schedule_managers.get(room_id)
+        if mgr is None:
+            return result
+
+        minutes_until_change = mgr.get_active_period_end_minutes()
+        if minutes_until_change is None or minutes_until_change <= 0 or minutes_until_change > 90:
+            # Only optimise within 90 min of period end to avoid false triggers
+            return result
+
+        next_period = mgr.get_next_period()
+        if next_period is None:
+            return result
+
+        next_target = float(next_period.get("temperature", current_temp))
+        # Only useful when next period has a LOWER target (otherwise no coast needed)
+        if next_target >= current_temp - 0.3:
+            return result
+
+        # Predict temperature at period end using cooling rate:
+        #   ΔT = cooling_rate [°C/h per °C delta] × (current - outdoor) × hours
+        hours = minutes_until_change / 60.0
+        delta_predicted = cooling_rate * (current_temp - outdoor_temp) * hours
+        predicted_temp = round(current_temp - delta_predicted, 1)
+
+        result["minutes_until_change"] = round(minutes_until_change, 1)
+        result["predicted_temp"] = predicted_temp
+        result["next_target"] = next_target
+
+        # Activate if room will coast to AT OR BELOW next target naturally
+        if predicted_temp <= next_target + 0.2:
+            result["active"] = True
+
+        return result
+
     def get_warmup_curve_data(self, room_id: str) -> list:
         """Return list of {bucket, avg_minutes, samples} sorted by outdoor temp for display."""
         by_temp = self._warmup_history_by_temp.get(room_id, {})
@@ -431,6 +506,25 @@ class RoomLogicMixin:
             return min(max_temp, max(min_temp, comfort_base + room_offset)), {
                 "source": "guest_mode", "schedule_active": False
             }
+
+        # --- 1b0. Holiday calendar override (v1.8) ---
+        # When a public holiday / school holiday calendar event is active, treat the day
+        # as a weekend (use Saturday schedule) OR force comfort temperature.
+        _holiday_active = getattr(self, "_holiday_active", False)
+        if _holiday_active and room_mode == ROOM_MODE_AUTO:
+            _holiday_mode = getattr(self, "_holiday_schedule_mode", "weekend")
+            if _holiday_mode == "comfort":
+                return min(max_temp, max(min_temp, comfort_base + room_offset)), {
+                    "source": "holiday_comfort", "schedule_active": False
+                }
+            # "weekend" mode: if today is a weekday (Mon–Fri), fake Saturday for schedule lookup
+            # We set _holiday_force_weekend on self so that the schedule manager call below
+            # uses a modified datetime with weekday=5 (Saturday) instead of the real day.
+            # This is stored as a simple boolean flag and read just before ScheduleManager calls.
+            _today_weekday = datetime.now().weekday()  # 0=Mon … 4=Fri → use Sat; 5/6 already weekend
+            self._holiday_force_weekend = _today_weekday < 5
+        else:
+            self._holiday_force_weekend = False
 
         # --- 1b. Room-specific presence → away temp (Roadmap 1.2) ---
         if not self._check_room_presence(room) and room_mode == ROOM_MODE_AUTO:
@@ -657,11 +751,27 @@ class RoomLogicMixin:
         if all_schedules:
             active_scheds = [s for s in all_schedules if self._is_schedule_group_active(s)]
             schedule_mgr = ScheduleManager(active_scheds)
-            active_period = schedule_mgr.get_active_period()
+
+            # v1.8 – Holiday weekend override: treat today as Saturday for schedule lookup
+            _sched_now = None
+            if getattr(self, "_holiday_force_weekend", False):
+                _real_now = datetime.now()
+                # Move to next Saturday: weekday=5; timedelta shifts days
+                _days_to_sat = (5 - _real_now.weekday()) % 7
+                if _days_to_sat == 0:
+                    _days_to_sat = 0  # already Saturday
+                _sched_now = _real_now + timedelta(days=_days_to_sat)
+                # Keep same time-of-day but use Saturday date
+                _sched_now = _sched_now.replace(
+                    hour=_real_now.hour, minute=_real_now.minute,
+                    second=_real_now.second, microsecond=0
+                )
+
+            active_period = schedule_mgr.get_active_period(now=_sched_now)
 
             # Pre-heat: if no active period but an upcoming one starts within preheat_minutes
             if active_period is None and preheat_minutes > 0:
-                active_period = schedule_mgr.get_upcoming_period(preheat_minutes)
+                active_period = schedule_mgr.get_upcoming_period(preheat_minutes, now=_sched_now)
                 if active_period:
                     source_tag = "preheat"
                 else:

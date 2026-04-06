@@ -1056,6 +1056,11 @@ class IHCPanel extends HTMLElement {
       static_energy_price:       a.static_energy_price != null ? parseFloat(a.static_energy_price) : null,
       boiler_kw:                 a.boiler_kw != null ? parseFloat(a.boiler_kw) : null,
       groups:                    a.groups || [],
+      // v1.8 – Holiday calendar + Peak Shaving
+      holiday_active:            a.holiday_active || false,
+      peak_shaving_active:       a.peak_shaving_active || false,
+      // v1.8 – Hourly price forecast (from IHC Energie heute sensor)
+      price_forecast:            ea.price_forecast || [],
     };
   }
 
@@ -1884,6 +1889,7 @@ class IHCPanel extends HTMLElement {
         ${room.room_mode === "manual" && room.next_period ? `<span style="font-size:11px;padding:2px 7px;border-radius:8px;background:color-mix(in srgb,#9c27b0 15%,transparent);color:var(--primary-text-color)" title="Automatischer Reset beim nächsten Zeitplan-Eintrag">↩ Reset ${room.next_period.start} Uhr</span>` : ""}
         ${(room.room_temp_threshold > 0) ? `<span style="font-size:11px;padding:2px 7px;border-radius:8px;background:color-mix(in srgb,#29b6f6 15%,transparent);color:var(--primary-text-color)" title="Mindesttemperatur-Schwelle aktiv: heizt immer wenn Raumtemp darunter fällt">🌡 Min ${room.room_temp_threshold}°C</span>` : ""}
         ${room.source === "temp_threshold_override" ? `<span style="font-size:11px;padding:2px 7px;border-radius:8px;background:color-mix(in srgb,#29b6f6 25%,transparent);color:var(--primary-text-color)" title="Heizung aktiv wegen Mindesttemperatur-Schwelle">🌡 Schwelle aktiv</span>` : ""}
+        ${room.optimum_stop_active ? `<span style="font-size:11px;padding:2px 7px;border-radius:8px;background:color-mix(in srgb,#66bb6a 20%,transparent);color:var(--primary-text-color)" title="Optimum Stop: Thermische Masse reicht aus – Heizung pausiert, Raum kühlt auf nächsten Zeitplan-Sollwert">🌿 Coasting${room.optimum_stop_minutes != null ? ' – ' + room.optimum_stop_minutes.toFixed(0) + ' min' : ''}</span>` : ""}
         ${room.presence_sensor ? `<span style="font-size:11px;padding:2px 7px;border-radius:8px;background:${room.pir_presence === false ? "color-mix(in srgb,#ef5350 15%,transparent)" : room.pir_presence === true ? "color-mix(in srgb,#66bb6a 15%,transparent)" : "color-mix(in srgb,#78909c 15%,transparent)"};color:var(--primary-text-color)" title="PIR: ${room.presence_sensor}">${room.pir_presence === false ? "🚶 Niemand da" : room.pir_presence === true ? "🏃 Bewegung" : "👁 PIR konfiguriert"}</span>` : ""}
         ${room.source === "pir_absence" ? `<span style="font-size:11px;padding:2px 7px;border-radius:8px;background:color-mix(in srgb,#ef5350 25%,transparent);color:var(--primary-text-color)" title="Abwesend-Temperatur wegen PIR-Abwesenheit aktiv">🚶 PIR abwesend</span>` : ""}
       </div>
@@ -3172,6 +3178,17 @@ class IHCPanel extends HTMLElement {
             <span style="font-size:13px">❄️ Abkühlrate:</span>
             <span style="font-size:15px;font-weight:700;color:#42a5f5">${coolingRate.toFixed(3)} °C/h je °C Δ (innen/außen)</span>
           </div>` : ""}
+        ${room.optimum_stop_active ? `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:color-mix(in srgb,#66bb6a 12%,transparent)">
+            <span style="font-size:13px">🌿 Optimum Stop aktiv:</span>
+            <span style="font-size:13px;font-weight:600;color:#43a047">
+              Heizung pausiert – Raum kühlt in ${room.optimum_stop_minutes != null ? room.optimum_stop_minutes.toFixed(0) + ' min' : '?'} auf
+              ${room.optimum_stop_predicted != null ? room.optimum_stop_predicted.toFixed(1) + ' °C' : '?'} (prognostiziert)
+            </span>
+          </div>` : (coolingRate != null ? `
+          <div style="font-size:11px;color:var(--secondary-text-color);margin-bottom:8px">
+            🌿 Optimum Stop: ${coolingRate > 0 ? 'Abkühlrate bekannt – IHC prüft bei jedem Zeitplan-Wechsel ob Heizung früher ausgeschaltet werden kann.' : 'Wird aktiv sobald genug Abkühlmessungen vorliegen.'}
+          </div>` : "")}
         ${warmupCurve.length > 0 ? `
           <div style="font-size:12px;font-weight:600;margin-bottom:6px">Aufheizkurve nach Außentemperatur</div>
           <div style="overflow-x:auto">
@@ -3368,6 +3385,9 @@ class IHCPanel extends HTMLElement {
         </td>` : ""}
         ${hasCo2 ? `<td style="padding:6px 8px;border-bottom:1px solid var(--divider-color);font-size:12px">
           ${r.co2_ppm > 0 ? `<span style="color:${r.co2_ppm > (r.co2_threshold_bad || 1200) ? "#c62828" : r.co2_ppm > (r.co2_threshold_good || 800) ? "#fb8c00" : "#43a047"}" title="CO₂-Konzentration">🌬️ ${r.co2_ppm}</span>` : "—"}
+          ${r.co2_ventilation_eta_minutes != null && r.co2_ventilation_eta_minutes <= 30
+            ? `<div><span style="font-size:10px;padding:1px 4px;border-radius:6px;background:${r.co2_ventilation_eta_minutes <= 5 ? 'color-mix(in srgb,#ef5350 20%,transparent)' : 'color-mix(in srgb,#fb8c00 20%,transparent)'};color:var(--primary-text-color)" title="Geschätzte Zeit bis CO₂-Grenzwert">💨 ${r.co2_ventilation_eta_minutes <= 0 ? 'Jetzt!' : r.co2_ventilation_eta_minutes.toFixed(0) + ' min'}</span></div>`
+            : ""}
         </td>` : ""}
         <td style="font-size:12px;padding:6px 8px;border-bottom:1px solid var(--divider-color)">${modeLabel}</td>
         <td style="font-size:12px;padding:6px 8px;border-bottom:1px solid var(--divider-color);color:var(--secondary-text-color)">${statusParts.length ? statusParts.join(" · ") : ""}</td>
@@ -3548,6 +3568,56 @@ class IHCPanel extends HTMLElement {
           ).join("")}
         </div>`;
       content.appendChild(heatmapCard);
+    }
+
+    // ── v1.8 Energiepreis-Forecast Chart (Tibber/Nordpool) ────────────────────
+    if (g.price_forecast && g.price_forecast.length > 0) {
+      const prices = g.price_forecast;
+      const currentHour = new Date().getHours();
+      const maxP = Math.max(...prices);
+      const minP = Math.min(...prices);
+      const avgP = prices.reduce((a, b) => a + b, 0) / prices.length;
+      const rangeP = maxP - minP || 0.01;
+      const W = 560, H = 120, padL = 40, padR = 8, padT = 10, padB = 24;
+      const barW = (W - padL - padR) / prices.length;
+      const bars = prices.map((p, i) => {
+        const barH = Math.max(2, ((p - minP) / rangeP) * (H - padT - padB));
+        const y = padT + (H - padT - padB) - barH;
+        const isCurrent = i === currentHour;
+        const color = p > avgP * 1.3 ? "#ef5350" : p < avgP * 0.7 ? "#66bb6a" : "#fb8c00";
+        const highlight = isCurrent ? `stroke="white" stroke-width="2"` : "";
+        return `<rect x="${(padL + i * barW + 1).toFixed(1)}" y="${y.toFixed(1)}" width="${(barW - 2).toFixed(1)}" height="${barH.toFixed(1)}"
+          fill="${color}" ${highlight} rx="2" opacity="${isCurrent ? 1 : 0.7}"
+          title="${i}:00 – ${p.toFixed(3)} €/kWh"/>`;
+      }).join("");
+      const avgY = padT + (H - padT - padB) - ((avgP - minP) / rangeP) * (H - padT - padB);
+      const xLabels = [0, 6, 12, 18, 23].map(i =>
+        `<text x="${(padL + i * barW + barW / 2).toFixed(1)}" y="${H - padB + 14}" text-anchor="middle" font-size="9" fill="var(--secondary-text-color)">${i}:00</text>`
+      ).join("");
+      const priceCard = document.createElement("details");
+      priceCard.className = "ihc-card";
+      priceCard.open = true;
+      priceCard.innerHTML = `
+        <summary><span class="ihc-card-title">💶 Energiepreis-Verlauf (heute)</span></summary>
+        <div class="ihc-card-body">
+          <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:8px">
+            Aktuell: <strong>${prices[currentHour] != null ? prices[currentHour].toFixed(3) + ' €/kWh' : '—'}</strong>
+            · Ø: ${avgP.toFixed(3)} €/kWh
+            · <span style="color:#ef5350">■</span> teuer &gt;130%
+            · <span style="color:#fb8c00">■</span> normal
+            · <span style="color:#66bb6a">■</span> günstig &lt;70%
+          </div>
+          <div style="overflow-x:auto">
+            <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:${H}px">
+              ${bars}
+              <line x1="${padL}" y1="${avgY.toFixed(1)}" x2="${W - padR}" y2="${avgY.toFixed(1)}"
+                stroke="var(--secondary-text-color)" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>
+              <text x="${padL - 4}" y="${(avgY + 4).toFixed(1)}" font-size="8" text-anchor="end" fill="var(--secondary-text-color)">Ø</text>
+              ${xLabels}
+            </svg>
+          </div>
+        </div>`;
+      content.appendChild(priceCard);
     }
 
     const setSystemModeBtn = content.querySelector("#diag-set-system-mode");
@@ -4392,6 +4462,21 @@ class IHCPanel extends HTMLElement {
                 value="${a.vacation_calendar ?? ''}" data-ep-domains="calendar" autocomplete="off">
               <span class="form-hint">Kalender-Entität aus HA. Termine die das Schlüsselwort „urlaub" im Namen enthalten schalten automatisch den Urlaubs-Modus ein.</span>
             </div>
+            <div class="settings-item">
+              <label>Feiertags-/Ferienkalender</label>
+              <input type="text" class="form-input" id="holiday-calendar"
+                placeholder="calendar.feiertage (leer = aus)"
+                value="${a.holiday_calendar ?? ''}" data-ep-domains="calendar" autocomplete="off">
+              <span class="form-hint">HA-Kalender-Entität. Wenn ein Termin aktiv → Wochenend-Zeitplan oder Komfortmodus.
+                ${g.holiday_active ? '<strong style="color:#1565c0">📅 Feiertag/Ferien aktiv</strong>' : ""}</span>
+            </div>
+            <div class="settings-item">
+              <label>Feiertagsmodus</label>
+              <select class="form-select" id="holiday-schedule-mode">
+                <option value="weekend" ${(a.holiday_schedule_mode || 'weekend') === 'weekend' ? 'selected' : ''}>Wochenend-Zeitplan nutzen</option>
+                <option value="comfort" ${a.holiday_schedule_mode === 'comfort' ? 'selected' : ''}>Komforttemperatur halten</option>
+              </select>
+            </div>
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="save-intelligent-settings">💾 Intelligente Regelung speichern</button>
@@ -4447,6 +4532,37 @@ class IHCPanel extends HTMLElement {
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="save-limescale-settings">💾 Kalkschutz speichern</button>
+          </div>
+        </div>
+      </details>
+
+      <!-- ── Peak Shaving ───────────────────────────── -->
+      <details class="ihc-card" ${a.peak_shaving_enabled ? "open" : ""}>
+        <summary>
+          <span class="ihc-card-title">⚡ Peak Shaving – Heizungsstaffelung
+            ${a.peak_shaving_enabled ? activeBadge("Aktiv") : ""}
+            ${g.peak_shaving_active ? activeBadge("Läuft","warn") : ""}
+          </span>
+        </summary>
+        <div class="ihc-card-body">
+          <div class="info-box">Verhindert Lastspitzen beim Hochfahren der Heizung. Räume mit niedrigerer Priorität werden gestaffelt zugeschaltet, statt alle gleichzeitig.</div>
+          <div class="settings-grid">
+            <div class="settings-item">
+              <label>Peak Shaving aktiviert</label>
+              <select class="form-select" id="peak-shaving-enabled">
+                <option value="false" ${!a.peak_shaving_enabled ? "selected" : ""}>Deaktiviert</option>
+                <option value="true"  ${a.peak_shaving_enabled  ? "selected" : ""}>Aktiviert</option>
+              </select>
+            </div>
+            <div class="settings-item">
+              <label>Staffelungsverzögerung (min)</label>
+              <input type="number" class="form-input" id="peak-shaving-delay" min="1" max="15" step="1"
+                value="${a.peak_shaving_delay_minutes ?? 3}">
+              <span class="form-hint">Nach dem Einschalten der Heizung werden Räume mit niedrigerer Anforderung erst nach dieser Zeit voll gezählt.</span>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="save-peak-shaving-settings">💾 Peak Shaving speichern</button>
           </div>
         </div>
       </details>
@@ -4804,8 +4920,18 @@ class IHCPanel extends HTMLElement {
         eta_preheat_enabled:      content.querySelector("#eta-preheat-enabled")?.value === "true",
         vacation_calendar:        content.querySelector("#vacation-calendar")?.value.trim() ?? "",
         adaptive_curve_max_delta: parseFloat(content.querySelector("#adaptive-curve-max-delta")?.value) || 3.0,
+        holiday_calendar:         content.querySelector("#holiday-calendar")?.value.trim() ?? "",
+        holiday_schedule_mode:    content.querySelector("#holiday-schedule-mode")?.value ?? "weekend",
       });
       this._toast("✓ Intelligente Regelung gespeichert");
+    });
+
+    content.querySelector("#save-peak-shaving-settings")?.addEventListener("click", () => {
+      this._callService("update_global_settings", {
+        peak_shaving_enabled:       content.querySelector("#peak-shaving-enabled")?.value === "true",
+        peak_shaving_delay_minutes: parseInt(content.querySelector("#peak-shaving-delay")?.value, 10) || 3,
+      });
+      this._toast("✓ Peak Shaving gespeichert");
     });
 
     content.querySelector("#save-limescale-settings")?.addEventListener("click", () => {

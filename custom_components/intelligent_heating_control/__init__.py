@@ -475,6 +475,10 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
             "forecast_coldnight_enabled", "forecast_coldnight_temp", "forecast_advance_hours",
             # Optimum Start – learn heating rate per room bucketed by outdoor temp
             "optimum_start_enabled",
+            # v1.8 – Holiday calendar
+            "holiday_calendar", "holiday_schedule_mode",
+            # v1.8 – Peak Shaving
+            "peak_shaving_enabled", "peak_shaving_delay_minutes",
         }
         updates = {k: v for k, v in call.data.items() if k in allowed}
         if updates:

@@ -197,6 +197,11 @@
       static_energy_price:       a.static_energy_price != null ? parseFloat(a.static_energy_price) : null,
       boiler_kw:                 a.boiler_kw != null ? parseFloat(a.boiler_kw) : null,
       groups:                    a.groups || [],
+      // v1.8 – Holiday calendar + Peak Shaving
+      holiday_active:            a.holiday_active || false,
+      peak_shaving_active:       a.peak_shaving_active || false,
+      // v1.8 – Hourly price forecast (from IHC Energie heute sensor)
+      price_forecast:            ea.price_forecast || [],
     };
   }
 

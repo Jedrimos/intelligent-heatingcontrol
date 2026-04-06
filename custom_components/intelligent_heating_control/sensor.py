@@ -66,6 +66,15 @@ from .const import (
     CONF_FORECAST_COLDNIGHT_TEMP, DEFAULT_FORECAST_COLDNIGHT_TEMP,
     CONF_FORECAST_ADVANCE_HOURS, DEFAULT_FORECAST_ADVANCE_HOURS,
     CONF_OPTIMUM_START_ENABLED, DEFAULT_OPTIMUM_START_ENABLED,
+    # v1.8 – Holiday calendar
+    CONF_HOLIDAY_CALENDAR,
+    CONF_HOLIDAY_SCHEDULE_MODE,
+    DEFAULT_HOLIDAY_SCHEDULE_MODE,
+    # v1.8 – Peak Shaving
+    CONF_PEAK_SHAVING_ENABLED,
+    DEFAULT_PEAK_SHAVING_ENABLED,
+    CONF_PEAK_SHAVING_DELAY_MINUTES,
+    DEFAULT_PEAK_SHAVING_DELAY_MINUTES,
 )
 from .coordinator import IHCCoordinator
 
@@ -184,6 +193,10 @@ class IHCTotalDemandSensor(_IHCBase, SensorEntity):
             "guest_remaining_minutes":     d.get("guest_remaining_minutes"),
             "weather_forecast":            d.get("weather_forecast"),
             "outdoor_humidity":            d.get("outdoor_humidity"),
+            # v1.8 – Holiday calendar + Peak Shaving
+            "holiday_active":              d.get("holiday_active", False),
+            "holiday_schedule_mode":       d.get("holiday_schedule_mode", "weekend"),
+            "peak_shaving_active":         d.get("peak_shaving_active", False),
             # v1.7 – Heizgruppen (read by frontend panel)
             "groups":                      d.get("groups", []),
             # Controller settings (read by frontend panel)
@@ -269,6 +282,12 @@ class IHCTotalDemandSensor(_IHCBase, SensorEntity):
             "heating_period_entity":           cfg.get(CONF_HEATING_PERIOD_ENTITY, ""),
             # Optimum Start (learn heating rate per outdoor-temp bucket)
             "optimum_start_enabled":           cfg.get(CONF_OPTIMUM_START_ENABLED, DEFAULT_OPTIMUM_START_ENABLED),
+            # v1.8 – Holiday calendar
+            "holiday_calendar":                cfg.get(CONF_HOLIDAY_CALENDAR, ""),
+            "holiday_schedule_mode":           cfg.get(CONF_HOLIDAY_SCHEDULE_MODE, DEFAULT_HOLIDAY_SCHEDULE_MODE),
+            # v1.8 – Peak Shaving
+            "peak_shaving_enabled":            cfg.get(CONF_PEAK_SHAVING_ENABLED, DEFAULT_PEAK_SHAVING_ENABLED),
+            "peak_shaving_delay_minutes":      cfg.get(CONF_PEAK_SHAVING_DELAY_MINUTES, DEFAULT_PEAK_SHAVING_DELAY_MINUTES),
         }
 
 
@@ -381,6 +400,7 @@ class IHCRoomDemandSensor(_IHCBase, SensorEntity):
                 "mold": room.get("mold"),                                  # Roadmap 2.0
                 "ventilation": room.get("ventilation"),                    # Ventilation advice
                 "co2_ppm": room.get("co2_ppm"),
+                "co2_ventilation_eta_minutes": room.get("co2_ventilation_eta_minutes"),
             }
         return {}
 
@@ -487,6 +507,7 @@ class IHCEnergyTodaySensor(_IHCBase, SensorEntity):
             "energy_yesterday_kwh":     d.get("energy_yesterday_kwh", 0.0),
             "eta_preheat_minutes":      d.get("eta_preheat_minutes"),
             "adaptive_curve_delta":     d.get("adaptive_curve_delta", 0.0),
+            "price_forecast":           d.get("price_forecast", []),
         }
 
 
