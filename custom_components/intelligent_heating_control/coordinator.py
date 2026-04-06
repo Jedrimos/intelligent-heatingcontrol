@@ -1476,6 +1476,17 @@ class IHCCoordinator(
                 target_temp = min(float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP)), target_temp + cold_boost)
                 meta["cold_boost"] = cold_boost
 
+            # v1.8 – CO₂ predictive pre-heat boost:
+            # If CO₂ will hit threshold_bad within 5 minutes, raise target by +1 °C so
+            # the room is already warm when the window needs to be opened for ventilation.
+            if meta.get("source") not in ("frost_protection", "system_away", "system_vacation", "room_off"):
+                _co2_ppm_now = self._get_room_co2(room)
+                if _co2_ppm_now is not None:
+                    _co2_eta = self._get_co2_ventilation_eta(room_id, room, _co2_ppm_now)
+                    if _co2_eta is not None and _co2_eta <= 5.0:
+                        target_temp = min(float(room.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP)), target_temp + 1.0)
+                        meta["co2_preheat_boost"] = True
+
             # Window restore mode: snapshot/restore target_temp around window open events
             prev_win = self._prev_window_open.get(room_id, False)
             if window_open and not prev_win:
