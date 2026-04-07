@@ -818,6 +818,18 @@ class IHCPanel extends HTMLElement {
       shadow.appendChild(toastRoot);
     }
 
+    // Delegated: manual-override dismiss button on dashboard room cards
+    const tabContent = panel.querySelector("#tab-content") || shadow.querySelector("#tab-content");
+    if (tabContent && !tabContent._ihcManualListenerAttached) {
+      tabContent._ihcManualListenerAttached = true;
+      tabContent.addEventListener("ihc-dismiss-manual", (e) => {
+        const roomId = e.detail?.id;
+        if (!roomId) return;
+        this._callService("set_room_mode", { id: roomId, mode: "auto" });
+        this._toast("↩ Modus zurück auf Auto");
+      });
+    }
+
     this._initialized = true;
     this._updateActiveTab();
     this._renderTabContent();
@@ -1502,6 +1514,12 @@ class IHCPanel extends HTMLElement {
       // Alert chips (compact, stacked)
       const alerts = [];
       if (systemOverrides) alerts.push(`<div class="room-alert alert-override">${overrideLabel} – Zimmermodus übersteuert</div>`);
+      // Manual override: show prominent alert with reset time if known
+      if (room.room_mode === "manual") {
+        const resetStr = (room.next_period && room.next_period.start) ? ` · Reset: ${room.next_period.start} Uhr` : "";
+        const manualTemp = room.manual_temp != null ? ` (${parseFloat(room.manual_temp).toFixed(1)}°C)` : "";
+        alerts.push(`<div class="room-alert alert-warn" style="cursor:pointer" onclick="this.closest('.room-card').dispatchEvent(new CustomEvent('ihc-dismiss-manual',{bubbles:true,detail:{id:'${room.room_id}'}}))">✋ Manuell bedient${manualTemp}${resetStr} – <u>Auto wiederherstellen</u></div>`);
+      }
       if (room.anomaly === "sensor_stuck") alerts.push(`<div class="room-alert alert-danger">⚠️ Sensor konstant – bitte prüfen</div>`);
       if (room.anomaly === "temp_drop")    alerts.push(`<div class="room-alert alert-warn">⚠️ Starker Temperaturabfall</div>`);
       if (room.mold && room.mold.risk)     alerts.push(`<div class="room-alert alert-info">💧 Schimmelrisiko – ${room.mold.humidity}%${room.mold.dew_point != null ? ` · Taupunkt ${room.mold.dew_point}°C` : ""}</div>`);
@@ -5582,6 +5600,12 @@ class IHCPanel extends HTMLElement {
           min="0" max="3600" step="30" value="300">
       </div>
 
+      <div class="form-group">
+        <label class="form-label">🎚️ Sensor-Kalibrierung (°C)</label>
+        <input type="number" class="form-input full" id="m-temp-calibration" value="0" step="0.1" min="-5" max="5">
+        <span class="form-hint">Offset für den Raumtemperatursensor. Positiv = Sensor misst zu kalt, negativ = zu warm. 0 = deaktiviert.</span>
+      </div>
+
       <details class="modal-collapsible">
         <summary class="modal-section-title">⚡ Aggressiver Modus (für träge TRVs)</summary>
         <div style="font-size:11px;color:var(--secondary-text-color);margin:8px 0 10px">
@@ -5760,6 +5784,16 @@ class IHCPanel extends HTMLElement {
             <span class="form-hint">Heizt immer wenn Raumtemp darunter fällt (0 = deaktiviert)</span>
           </div>
           <div class="settings-item">
+            <label>HA Klimaregler – Min.-Temperatur (°C)</label>
+            <input type="number" class="form-input" id="m-min-temp" value="5" step="0.5" min="4" max="15">
+            <span class="form-hint">Untergrenze des Temperatur-Schiebereglers im HA Climate-Baustein</span>
+          </div>
+          <div class="settings-item">
+            <label>HA Klimaregler – Max.-Temperatur (°C)</label>
+            <input type="number" class="form-input" id="m-max-temp" value="30" step="0.5" min="20" max="35">
+            <span class="form-hint">Obergrenze des Temperatur-Schiebereglers im HA Climate-Baustein</span>
+          </div>
+          <div class="settings-item">
             <label>Zimmergröße (m²)</label>
             <input type="number" class="form-input" id="m-room-qm" value="0" step="1" min="0" max="200">
             <span class="form-hint">0 = nicht gesetzt · wird für Vorheizzeit, Gewichtung &amp; Energieberechnung genutzt</span>
@@ -5882,6 +5916,8 @@ class IHCPanel extends HTMLElement {
         deadband:               parseFloat(modal.querySelector("#m-deadband")?.value) || 0.5,
         weight:                 parseFloat(modal.querySelector("#m-weight")?.value) || 1.0,
         absolute_min_temp:      parseFloat(modal.querySelector("#m-absolute-min-temp")?.value) || 15.0,
+        min_temp:               parseFloat(modal.querySelector("#m-min-temp")?.value) || 5.0,
+        max_temp:               parseFloat(modal.querySelector("#m-max-temp")?.value) || 30.0,
         room_temp_threshold:    parseFloat(modal.querySelector("#m-room-temp-threshold")?.value ?? "0") || 0,
         room_qm:                parseFloat(modal.querySelector("#m-room-qm")?.value) || 0,
         room_preheat_minutes:   parseInt(modal.querySelector("#m-room-preheat")?.value ?? "-1", 10),
@@ -5911,6 +5947,7 @@ class IHCPanel extends HTMLElement {
         trv_temp_offset:        parseFloat(modal.querySelector("#m-trv-temp-offset")?.value ?? "-2"),
         trv_valve_demand:       modal.querySelector("#m-trv-valve-demand")?.checked === true,
         trv_min_send_interval:  parseInt(modal.querySelector("#m-trv-min-send-interval")?.value, 10) || 0,
+        temp_calibration:       parseFloat(modal.querySelector("#m-temp-calibration")?.value ?? "0") || 0,
         comfort_temp_entity:      modal.querySelector("#m-comfort-temp-entity")?.value.trim() || "",
         eco_temp_entity:          modal.querySelector("#m-eco-temp-entity")?.value.trim() || "",
         comfort_extend_entity: "",
@@ -6128,7 +6165,7 @@ class IHCPanel extends HTMLElement {
         </div>
       </details>
 
-      <details class="modal-collapsible" ${(room.room_qm > 0 || room.absolute_min_temp !== 15 || room.room_temp_threshold > 0) ? "open" : ""}>
+      <details class="modal-collapsible" ${(room.room_qm > 0 || room.absolute_min_temp !== 15 || room.room_temp_threshold > 0 || room.min_temp !== 5 || room.max_temp !== 30) ? "open" : ""}>
         <summary>🌡️ Temperaturgrenzen &amp; Zeiten</summary>
         <div class="modal-collapsible-body">
           <div class="settings-grid">
@@ -6143,6 +6180,18 @@ class IHCPanel extends HTMLElement {
               <input type="number" class="form-input" id="m-room-temp-threshold"
                 value="${room.room_temp_threshold ?? 0}" step="0.5" min="0" max="25" placeholder="0 = deaktiviert">
               <span class="form-hint">Heizt immer wenn Raumtemp darunter fällt (0 = deaktiviert)</span>
+            </div>
+            <div class="settings-item">
+              <label>HA Klimaregler – Min.-Temperatur (°C)</label>
+              <input type="number" class="form-input" id="m-min-temp"
+                value="${room.min_temp ?? 5}" step="0.5" min="4" max="15">
+              <span class="form-hint">Untergrenze des Temperatur-Schiebereglers im HA Climate-Baustein</span>
+            </div>
+            <div class="settings-item">
+              <label>HA Klimaregler – Max.-Temperatur (°C)</label>
+              <input type="number" class="form-input" id="m-max-temp"
+                value="${room.max_temp ?? 30}" step="0.5" min="20" max="35">
+              <span class="form-hint">Obergrenze des Temperatur-Schiebereglers im HA Climate-Baustein</span>
             </div>
             <div class="settings-item">
               <label>Zimmergröße (m²)</label>
@@ -6322,6 +6371,20 @@ class IHCPanel extends HTMLElement {
         </div>
       </details>
 
+      <details class="modal-collapsible" ${room.temp_calibration != null && room.temp_calibration !== 0 ? "open" : ""}>
+        <summary>🎚️ Sensor-Kalibrierung</summary>
+        <div class="modal-collapsible-body">
+          <div class="settings-grid">
+            <div class="settings-item" style="grid-column:1/-1">
+              <label>Raumtemperatursensor-Offset (°C)</label>
+              <input type="number" class="form-input" id="m-temp-calibration"
+                value="${room.temp_calibration ?? 0}" step="0.1" min="-5" max="5">
+              <span class="form-hint">Positiv = Sensor misst zu kalt (IHC addiert den Wert). Negativ = Sensor misst zu warm. 0 = deaktiviert.</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
       <details class="modal-collapsible" ${room.ha_schedules?.length ? "open" : ""}>
         <summary>📅 HA Zeitpläne <span style="font-weight:400;font-size:10px;margin-left:6px">(optional)</span></summary>
         <div class="modal-collapsible-body">
@@ -6450,6 +6513,8 @@ class IHCPanel extends HTMLElement {
         deadband:       parseFloat(modal.querySelector("#m-deadband").value),
         weight:         parseFloat(modal.querySelector("#m-weight").value),
         absolute_min_temp:      parseFloat(modal.querySelector("#m-absolute-min-temp")?.value) || 15,
+        min_temp:               parseFloat(modal.querySelector("#m-min-temp")?.value) || 5.0,
+        max_temp:               parseFloat(modal.querySelector("#m-max-temp")?.value) || 30.0,
         room_temp_threshold:    parseFloat(modal.querySelector("#m-room-temp-threshold")?.value ?? "0") || 0,
         room_qm:                parseFloat(modal.querySelector("#m-room-qm")?.value) || 0,
         room_preheat_minutes:   parseInt(modal.querySelector("#m-room-preheat")?.value ?? "-1", 10),
@@ -6480,6 +6545,7 @@ class IHCPanel extends HTMLElement {
         trv_valve_demand:         modal.querySelector("#m-trv-valve-demand")?.checked === true,
         trv_min_send_interval:    parseInt(modal.querySelector("#m-trv-min-send-interval")?.value, 10) || 0,
         trv_calibrations:         (() => { try { const v = modal.querySelector("#m-trv-calibrations")?.value.trim(); return v ? JSON.parse(v) : {}; } catch { return {}; } })(),
+        temp_calibration:         parseFloat(modal.querySelector("#m-temp-calibration")?.value ?? "0") || 0,
         comfort_temp_entity:      modal.querySelector("#m-comfort-temp-entity")?.value.trim() || "",
         eco_temp_entity:          modal.querySelector("#m-eco-temp-entity")?.value.trim() || "",
         comfort_extend_entity: "",

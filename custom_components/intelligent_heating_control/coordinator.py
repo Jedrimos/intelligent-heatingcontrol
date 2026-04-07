@@ -438,6 +438,8 @@ class IHCCoordinator(
 
         # Stuck-valve detection: entity_id → monotonic time when stuck condition first appeared
         self._trv_stuck_since: Dict[str, float] = {}
+        # Grace period after sending a command before stuck-valve detection may fire (seconds)
+        self._trv_command_grace: int = 300  # 5 minutes – give TRV time to physically open
 
         # Kalkschutz: entity_id → date of last exercise
         self._limescale_last_exercise: Dict[str, Any] = {}
@@ -1503,8 +1505,14 @@ class IHCCoordinator(
             self._prev_window_open[room_id] = window_open
 
             # Manual TRV override detection: if TRV was adjusted by hand, switch room to manual
+            # Skip during preheat: the preheat window sends the upcoming period's comfort setpoint
+            # BEFORE the schedule officially starts.  The TRV's own internal schedule (if any),
+            # small outdoor-temp-driven recalculations, or the confirmation-timeout baseline-reset
+            # can all produce a ≥1.0 °C discrepancy during preheat that looks like a manual
+            # override but isn't.  The room will auto-reset to AUTO at the schedule transition anyway.
             if room_mode not in (ROOM_MODE_OFF, ROOM_MODE_MANUAL) and not window_open:
-                self._detect_manual_trv_override(room, room_id, room_mode)
+                if meta.get("source") != "preheat":
+                    self._detect_manual_trv_override(room, room_id, room_mode)
 
             # Update controller state for this room.
             # demand_temp is used here: in TRV mode it is the TRV sensor temperature
