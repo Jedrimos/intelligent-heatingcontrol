@@ -270,17 +270,13 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
                     or (trv_avg_valve is not None and trv_avg_valve > 8)):
                 return HVACAction.HEATING
         else:
-            # Switch mode: show HEATING when the room demands heat.
-            # Also show HEATING when the central boiler is active and the room is still
-            # below its target – the room IS being heated even if demand just dropped to 0
-            # (safety gate: demand=0 when current_temp >= target - deadband).
+            # Switch mode: show HEATING when the room demands heat OR the central boiler
+            # is actively running. In a central heating system the boiler distributes heat
+            # to all radiators simultaneously, so HEATING is the correct action for the
+            # whole house whenever the boiler fires – even for rooms that just reached
+            # target and dropped their individual demand to 0.
             heating_active = bool((data or {}).get("heating_active", False))
-            if demand > 0:
-                return HVACAction.HEATING
-            if (heating_active
-                    and current_temp is not None
-                    and target_temp is not None
-                    and current_temp < target_temp):
+            if demand > 0 or heating_active:
                 return HVACAction.HEATING
             if data and data.get("cooling_active"):
                 return HVACAction.COOLING
