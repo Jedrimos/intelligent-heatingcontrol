@@ -478,13 +478,49 @@
           </div>
         </details>
 
-        <div style="margin-bottom:16px">
-          <div class="modal-section-title" style="margin-bottom:8px">⏱️ Komfort-Verlängerung
+        <details class="modal-collapsible" ${(room.comfort_extend_entries?.length > 0 || room.comfort_extend_entity) ? "open" : ""}>
+          <summary class="modal-section-title">⏱️ Komfort-Verlängerung
             ${room.comfort_extend_active ? '<span style="color:#43a047;font-size:11px;margin-left:6px">● aktiv</span>' : ''}
-          </div>
+          </summary>
           <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:8px">
             Heizung bleibt im Komfortmodus solange eine der folgenden Bedingungen zutrifft.
-            Eintrag: entity_id · zustand (z.B. <code>media_player.tv · playing</code>)
+          </div>
+
+          ${(() => {
+            // Live status of each configured entry (like HA schedule status)
+            const entries = (room.comfort_extend_entries && room.comfort_extend_entries.length > 0)
+              ? room.comfort_extend_entries
+              : (room.comfort_extend_entity ? [{entity: room.comfort_extend_entity, state: room.comfort_extend_state || "on"}] : []);
+            if (entries.length === 0) return "";
+            const statusRows = entries.map(entry => {
+              if (!entry.entity) return "";
+              const entityState = this._hass?.states[entry.entity];
+              const currentState = entityState?.state ?? "?";
+              const isActive = currentState === (entry.state || "on");
+              const dot = isActive
+                ? `<span style="color:#66bb6a;font-weight:700">● AN</span>`
+                : `<span style="color:#9e9e9e">● AUS</span>`;
+              const badge = isActive
+                ? `<span style="background:#1b5e20;color:#a5d6a7;font-size:10px;padding:2px 6px;border-radius:10px;font-weight:700;margin-left:6px">▶ AKTIV</span>`
+                : "";
+              return `
+                <div style="padding:6px 10px;border-radius:8px;margin-bottom:4px;
+                  background:${isActive ? "rgba(27,94,32,0.15)" : "var(--secondary-background-color)"};
+                  border:1px solid ${isActive ? "#388e3c" : "var(--divider-color)"}">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    ${dot}
+                    <span style="font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${entry.entity}</span>
+                    <span style="font-size:11px;color:var(--secondary-text-color)">= ${entry.state || "on"}</span>
+                    <span style="font-size:11px;opacity:.6">(ist: ${currentState})</span>
+                    ${badge}
+                  </div>
+                </div>`;
+            }).filter(Boolean).join("");
+            return statusRows ? `<div style="margin-bottom:10px">${statusRows}</div>` : "";
+          })()}
+
+          <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:6px">
+            Konfiguration: entity_id · zustand (z.B. <code>media_player.tv · playing</code>)
           </div>
           <div id="rs-comfort-extend-list">
             ${(() => {
@@ -513,7 +549,7 @@
             })()}
           </div>
           <span class="form-hint">Optional. Beispiel: media_player.wohnzimmer / playing · binary_sensor.jemand_zuhause / on</span>
-        </div>
+        </details>
 
         <div class="btn-row" style="margin-top:16px">
           <button class="btn btn-primary" id="rs-save-btn">💾 Einstellungen speichern</button>

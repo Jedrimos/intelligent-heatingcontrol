@@ -967,15 +967,52 @@ class IHCPanel extends HTMLElement {
         window_close_delay: state.attributes.window_close_delay ?? 0,
         effective_weight: state.attributes.effective_weight ?? state.attributes.weight ?? 1.0,
         // TRV sensor data integration
-        trv_temp_weight:  state.attributes.trv_temp_weight ?? 0,
-        trv_temp_offset:  state.attributes.trv_temp_offset ?? -2,
-        trv_valve_demand: state.attributes.trv_valve_demand === true,
-        trv_raw_temp:     state.attributes.trv_raw_temp ?? null,
-        trv_humidity:     state.attributes.trv_humidity ?? null,
-        trv_avg_valve:    state.attributes.trv_avg_valve ?? null,
-        trv_any_heating:  state.attributes.trv_any_heating === true,
-        trv_min_battery:  state.attributes.trv_min_battery ?? null,
-        trv_low_battery:  state.attributes.trv_low_battery === true,
+        trv_temp_weight:      state.attributes.trv_temp_weight ?? 0,
+        trv_temp_offset:      state.attributes.trv_temp_offset ?? -2,
+        trv_valve_demand:     state.attributes.trv_valve_demand === true,
+        trv_min_send_interval: state.attributes.trv_min_send_interval ?? 0,
+        trv_calibrations:     state.attributes.trv_calibrations ?? {},
+        temp_calibration:     state.attributes.temp_calibration ?? 0,
+        trv_raw_temp:         state.attributes.trv_raw_temp ?? null,
+        trv_humidity:         state.attributes.trv_humidity ?? null,
+        trv_avg_valve:        state.attributes.trv_avg_valve ?? null,
+        trv_any_heating:      state.attributes.trv_any_heating === true,
+        trv_min_battery:      state.attributes.trv_min_battery ?? null,
+        trv_low_battery:      state.attributes.trv_low_battery === true,
+        trv_stuck_valves:     state.attributes.trv_stuck_valves ?? [],
+        // Mold protection details
+        mold_humidity_threshold: state.attributes.mold_humidity_threshold ?? 70,
+        // CO2 config
+        co2_sensor:            state.attributes.co2_sensor || "",
+        co2_threshold_good:    state.attributes.co2_threshold_good ?? 800,
+        co2_threshold_bad:     state.attributes.co2_threshold_bad ?? 1200,
+        co2_ventilation_eta_minutes: state.attributes.co2_ventilation_eta_minutes ?? null,
+        // PIR presence sensor
+        presence_sensor:            state.attributes.presence_sensor || "",
+        presence_sensor_on_delay:   state.attributes.presence_sensor_on_delay ?? 300,
+        presence_sensor_off_delay:  state.attributes.presence_sensor_off_delay ?? 300,
+        pir_presence:               state.attributes.pir_presence ?? null,
+        // Window settings
+        window_open_temp:     state.attributes.window_open_temp ?? 0,
+        window_restore_mode:  state.attributes.window_restore_mode || "schedule",
+        // Temperature threshold & dynamic entities
+        room_temp_threshold:  state.attributes.room_temp_threshold ?? 0,
+        comfort_temp_entity:  state.attributes.comfort_temp_entity || "",
+        eco_temp_entity:      state.attributes.eco_temp_entity || "",
+        // Comfort extend
+        comfort_extend_entries: state.attributes.comfort_extend_entries ?? [],
+        comfort_extend_entity:  state.attributes.comfort_extend_entity || "",
+        comfort_extend_state:   state.attributes.comfort_extend_state || "on",
+        comfort_extend_active:  state.attributes.comfort_extend_active === true,
+        // Aggressive mode
+        aggressive_mode_enabled: state.attributes.aggressive_mode_enabled === true,
+        aggressive_mode_range:   state.attributes.aggressive_mode_range ?? 2,
+        aggressive_mode_offset:  state.attributes.aggressive_mode_offset ?? 3,
+        // Runtime status
+        optimum_stop_active:  state.attributes.optimum_stop_active === true,
+        optimum_stop_minutes: state.attributes.optimum_stop_minutes ?? null,
+        ha_schedule_entity:   state.attributes.ha_schedule_entity || "",
+        ha_schedule_mode:     state.attributes.ha_schedule_mode || "",
       };
     });
     // Enrich from demand sensors
@@ -2302,13 +2339,49 @@ class IHCPanel extends HTMLElement {
           </div>
         </details>
 
-        <div style="margin-bottom:16px">
-          <div class="modal-section-title" style="margin-bottom:8px">⏱️ Komfort-Verlängerung
+        <details class="modal-collapsible" ${(room.comfort_extend_entries?.length > 0 || room.comfort_extend_entity) ? "open" : ""}>
+          <summary class="modal-section-title">⏱️ Komfort-Verlängerung
             ${room.comfort_extend_active ? '<span style="color:#43a047;font-size:11px;margin-left:6px">● aktiv</span>' : ''}
-          </div>
+          </summary>
           <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:8px">
             Heizung bleibt im Komfortmodus solange eine der folgenden Bedingungen zutrifft.
-            Eintrag: entity_id · zustand (z.B. <code>media_player.tv · playing</code>)
+          </div>
+
+          ${(() => {
+            // Live status of each configured entry (like HA schedule status)
+            const entries = (room.comfort_extend_entries && room.comfort_extend_entries.length > 0)
+              ? room.comfort_extend_entries
+              : (room.comfort_extend_entity ? [{entity: room.comfort_extend_entity, state: room.comfort_extend_state || "on"}] : []);
+            if (entries.length === 0) return "";
+            const statusRows = entries.map(entry => {
+              if (!entry.entity) return "";
+              const entityState = this._hass?.states[entry.entity];
+              const currentState = entityState?.state ?? "?";
+              const isActive = currentState === (entry.state || "on");
+              const dot = isActive
+                ? `<span style="color:#66bb6a;font-weight:700">● AN</span>`
+                : `<span style="color:#9e9e9e">● AUS</span>`;
+              const badge = isActive
+                ? `<span style="background:#1b5e20;color:#a5d6a7;font-size:10px;padding:2px 6px;border-radius:10px;font-weight:700;margin-left:6px">▶ AKTIV</span>`
+                : "";
+              return `
+                <div style="padding:6px 10px;border-radius:8px;margin-bottom:4px;
+                  background:${isActive ? "rgba(27,94,32,0.15)" : "var(--secondary-background-color)"};
+                  border:1px solid ${isActive ? "#388e3c" : "var(--divider-color)"}">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    ${dot}
+                    <span style="font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${entry.entity}</span>
+                    <span style="font-size:11px;color:var(--secondary-text-color)">= ${entry.state || "on"}</span>
+                    <span style="font-size:11px;opacity:.6">(ist: ${currentState})</span>
+                    ${badge}
+                  </div>
+                </div>`;
+            }).filter(Boolean).join("");
+            return statusRows ? `<div style="margin-bottom:10px">${statusRows}</div>` : "";
+          })()}
+
+          <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:6px">
+            Konfiguration: entity_id · zustand (z.B. <code>media_player.tv · playing</code>)
           </div>
           <div id="rs-comfort-extend-list">
             ${(() => {
@@ -2337,7 +2410,7 @@ class IHCPanel extends HTMLElement {
             })()}
           </div>
           <span class="form-hint">Optional. Beispiel: media_player.wohnzimmer / playing · binary_sensor.jemand_zuhause / on</span>
-        </div>
+        </details>
 
         <div class="btn-row" style="margin-top:16px">
           <button class="btn btn-primary" id="rs-save-btn">💾 Einstellungen speichern</button>

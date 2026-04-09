@@ -265,9 +265,17 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             # TRV mode: demand > 0, TRV reports heating action, or valve physically open.
             # Valve > 8% is the most reliable signal – TRV's own controller has decided to heat.
             trv_avg_valve = d.get("trv_avg_valve")
+            trv_any_heating = d.get("trv_any_heating", False)
             if (demand > 0
-                    or d.get("trv_any_heating", False)
+                    or trv_any_heating
                     or (trv_avg_valve is not None and trv_avg_valve > 8)):
+                return HVACAction.HEATING
+            # Fallback for TRVs that don't report valve position or hvac_action:
+            # show HEATING whenever IHC is actively trying to heat the room
+            # (target above current – the TRV received a setpoint above room temp).
+            if (trv_avg_valve is None and not trv_any_heating
+                    and current_temp is not None and target_temp is not None
+                    and current_temp < target_temp):
                 return HVACAction.HEATING
         else:
             # Switch mode: show HEATING when the room demands heat OR the central boiler
