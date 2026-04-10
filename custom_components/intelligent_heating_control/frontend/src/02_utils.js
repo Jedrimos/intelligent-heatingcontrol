@@ -148,6 +148,7 @@
         max_temp:                state.attributes.max_temp ?? 30,
         // Demand heatmap & learning data
         demand_heatmap:          state.attributes.demand_heatmap ?? [],
+        avg_warmup_minutes:      state.attributes.avg_warmup_minutes ?? null,
         learned_preheat_minutes: state.attributes.learned_preheat_minutes ?? null,
         avg_cooling_rate:        state.attributes.avg_cooling_rate ?? null,
         warmup_curve:            state.attributes.warmup_curve ?? [],

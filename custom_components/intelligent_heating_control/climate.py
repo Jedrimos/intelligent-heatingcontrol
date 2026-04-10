@@ -416,6 +416,7 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             # Demand heatmap (7 days × 24 hours EMA)
             "demand_heatmap": d.get("demand_heatmap", []),
             # Optimum Start & Thermal Mass learning data
+            "avg_warmup_minutes": d.get("avg_warmup_minutes"),          # flat average, no outdoor sensor needed
             "learned_preheat_minutes": d.get("learned_preheat_minutes"),
             "avg_cooling_rate": d.get("avg_cooling_rate"),
             "warmup_curve": d.get("warmup_curve", []),

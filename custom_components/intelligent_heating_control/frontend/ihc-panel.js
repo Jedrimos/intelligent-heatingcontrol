@@ -1019,6 +1019,7 @@ class IHCPanel extends HTMLElement {
         max_temp:                state.attributes.max_temp ?? 30,
         // Demand heatmap & learning data
         demand_heatmap:          state.attributes.demand_heatmap ?? [],
+        avg_warmup_minutes:      state.attributes.avg_warmup_minutes ?? null,
         learned_preheat_minutes: state.attributes.learned_preheat_minutes ?? null,
         avg_cooling_rate:        state.attributes.avg_cooling_rate ?? null,
         warmup_curve:            state.attributes.warmup_curve ?? [],
@@ -3264,6 +3265,7 @@ class IHCPanel extends HTMLElement {
     const warmupCurve = room.warmup_curve || [];
     const learnedMin = room.learned_preheat_minutes;
     const coolingRate = room.avg_cooling_rate;
+    const avgWarmupMin = room.avg_warmup_minutes;  // flat average, always available
     {
       const learnCard = document.createElement("div");
       learnCard.className = "card";
@@ -3280,15 +3282,24 @@ class IHCPanel extends HTMLElement {
           </tr>`).join("");
       }
 
+      // Detect if outdoor sensor seems to be missing (no curve data and no cooling rate)
+      const noOutdoorData = warmupCurve.length === 0 && coolingRate == null && avgWarmupMin != null;
+
       learnCard.innerHTML = `
         <div class="card-title">🧠 Lernkurve – Optimum Start & Thermische Masse</div>
         <div style="font-size:12px;color:var(--secondary-text-color);margin-bottom:12px">
           IHC misst wie lange der Raum benötigt um den Sollwert zu erreichen (Aufheizrate) und wie schnell er abkühlt.
-          Die Daten werden pro Außentemperatur gespeichert und für die automatische Vorheizzeit genutzt.
+          Die detaillierte Kurve nach Außentemperatur wird für die automatische Vorheizzeit genutzt.
         </div>
+        ${avgWarmupMin != null ? `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:13px">⏱ Ø Aufheizzeit (einfach):</span>
+            <span style="font-size:15px;font-weight:700;color:var(--primary-color)">${avgWarmupMin.toFixed(0)} min</span>
+            <span style="font-size:11px;color:var(--secondary-text-color)">(ohne Außentemperatur-Korrektur)</span>
+          </div>` : ""}
         ${learnedMin != null ? `
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-            <span style="font-size:13px">📐 Aktuelle Vorheizzeit (gelernt):</span>
+            <span style="font-size:13px">📐 Vorheizzeit (gelernt + AT-korrigiert):</span>
             <span style="font-size:15px;font-weight:700;color:var(--primary-color)">${learnedMin.toFixed(0)} min</span>
           </div>` : ""}
         ${coolingRate != null ? `
@@ -3305,8 +3316,13 @@ class IHCPanel extends HTMLElement {
             </span>
           </div>` : (coolingRate != null ? `
           <div style="font-size:11px;color:var(--secondary-text-color);margin-bottom:8px">
-            🌿 Optimum Stop: ${coolingRate > 0 ? 'Abkühlrate bekannt – IHC prüft bei jedem Zeitplan-Wechsel ob Heizung früher ausgeschaltet werden kann.' : 'Wird aktiv sobald genug Abkühlmessungen vorliegen.'}
+            🌿 Optimum Stop: Abkühlrate bekannt – IHC prüft bei jedem Zeitplan-Wechsel ob Heizung früher ausgeschaltet werden kann.
           </div>` : "")}
+        ${noOutdoorData ? `
+          <div style="padding:10px 12px;border-radius:8px;background:color-mix(in srgb,#ff9800 12%,transparent);font-size:12px;margin-bottom:8px">
+            ⚠️ Kein Außentemperatursensor konfiguriert oder verfügbar – die detaillierte Aufheizkurve und die Abkühlrate
+            können nicht berechnet werden. Bitte einen Außensensor in den <strong>Globaleinstellungen</strong> eintragen.
+          </div>` : ""}
         ${warmupCurve.length > 0 ? `
           <div style="font-size:12px;font-weight:600;margin-bottom:6px">Aufheizkurve nach Außentemperatur</div>
           <div style="overflow-x:auto">
@@ -3320,10 +3336,10 @@ class IHCPanel extends HTMLElement {
               </thead>
               <tbody>${warmupRows}</tbody>
             </table>
-          </div>` : `
+          </div>` : (avgWarmupMin == null ? `
           <div style="padding:16px;text-align:center;color:var(--secondary-text-color);font-size:12px">
-            Noch keine Lernkurven-Daten – IHC sammelt beim nächsten Aufheizzyklus erste Messungen.
-          </div>`}`;
+            Noch keine Lernkurven-Daten – IHC sammelt beim nächsten Aufheizzyklus (mind. 2 min Aufheizphase) erste Messungen.
+          </div>` : "")}`;
       container.appendChild(learnCard);
     }
   }
