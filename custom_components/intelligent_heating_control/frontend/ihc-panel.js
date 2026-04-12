@@ -2107,7 +2107,7 @@ class IHCPanel extends HTMLElement {
           </div>
           ${(() => {
             const allRooms = this._getRoomData();
-            const otherRooms = allRooms.filter(r => r.room_id !== room.room_id);
+            const otherRooms = Object.values(allRooms).filter(r => r.room_id !== room.room_id);
             const currentCascadeRooms = room.window_cascade_rooms || [];
             const roomCheckboxes = otherRooms.map(r => `
               <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer">
