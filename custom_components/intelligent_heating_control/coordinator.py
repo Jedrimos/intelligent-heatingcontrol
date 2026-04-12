@@ -1704,9 +1704,10 @@ class IHCCoordinator(
                 # Ensure night_setback is always present (meta may omit it for mode overrides)
                 "night_setback": 0.0,
                 # Fenster-Kaskade: Status ob dieser Raum gerade durch ein anderes Zimmer abgesenkt wird
-                "window_cascade_active": _cascade_info is not None and room_mode not in (ROOM_MODE_OFF,),
-                "window_cascade_offset": _cascade_info[0] if _cascade_info else None,
-                "window_cascade_source": _cascade_info[1] if _cascade_info else None,
+                # Konsistent mit der Anwendungslogik oben: nur aktiv wenn kein eigenes Fenster offen und kein OFF-Modus
+                "window_cascade_active": _cascade_info is not None and not window_open and room_mode not in (ROOM_MODE_OFF,),
+                "window_cascade_offset": _cascade_info[0] if (_cascade_info and not window_open and room_mode not in (ROOM_MODE_OFF,)) else None,
+                "window_cascade_source": _cascade_info[1] if (_cascade_info and not window_open and room_mode not in (ROOM_MODE_OFF,)) else None,
                 # window_opened_at: Minuten seit dem Fenster geöffnet wurde (für Kaskaden-Countdown)
                 "window_open_minutes": (
                     round((_now_cascade - self._window_opened_at[room_id]).total_seconds() / 60.0, 1)
