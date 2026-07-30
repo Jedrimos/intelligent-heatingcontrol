@@ -96,7 +96,7 @@
       <div class="form-group">
         <label class="form-label">Bewegungsmelder (PIR)</label>
         <input class="form-input" type="text" id="m-presence-sensor"
-          value="" placeholder="binary_sensor.bewegung_wohnzimmer">
+          value="" placeholder="binary_sensor.bewegung_wohnzimmer" data-ep-domains="binary_sensor" autocomplete="off">
       </div>
       <div class="form-group">
         <label class="form-label">PIR Einschalt-Verzögerung (s)</label>
@@ -227,7 +227,12 @@
           <div class="settings-item">
             <label>Standard-Boost-Dauer (min)</label>
             <input type="number" class="form-input" id="m-boost-dur" value="60" step="5" min="5" max="480">
-            <span class="form-hint">Nutzt HA nativen Boost-Modus auf dem TRV – kein manuelles Temperaturziel</span>
+            <span class="form-hint">Nutzt HA nativen Boost-Modus auf dem TRV wenn keine Boost-Temperatur gesetzt ist</span>
+          </div>
+          <div class="settings-item">
+            <label>Boost-Zieltemperatur (°C)</label>
+            <input type="number" class="form-input" id="m-boost-temp" value="0" step="0.5" min="0" max="30" placeholder="0 = Komfort-Temperatur">
+            <span class="form-hint">Feste Zieltemperatur während des Boosts. 0 = deaktiviert, nutzt stattdessen die Komfort-Temperatur.</span>
           </div>
         </div>
         <div style="font-size:11px;color:var(--secondary-text-color);margin:8px 0">
@@ -256,6 +261,16 @@
             <label>Min. Sendeintervall (s)</label>
             <input type="number" class="form-input" id="m-trv-min-send-interval" value="0" step="60" min="0" max="1800">
             <span class="form-hint">0 = nur Temperatur-Hysterese · z.B. 300 = max alle 5 min</span>
+          </div>
+          <div class="settings-item" style="grid-column:1/-1">
+            <label>🎯 Per-TRV-Kalibrierung (JSON-Dict)</label>
+            <textarea class="form-input" id="m-trv-calibrations" rows="3"
+              placeholder='{"climate.trv_schrank": -2.0, "climate.trv_fenster": 0.5}'
+              style="font-family:monospace;font-size:11px"></textarea>
+            <span class="form-hint">
+              Optionale Temperatur-Offsets pro TRV-Entität (in °C). Negativ = TRV misst zu warm (z.B. nahe am Heizkörper).
+              Format: <code>{"climate.trv_name": -2.0}</code>. Leer = deaktiviert.
+            </span>
           </div>
         </div>
       </details>
@@ -487,10 +502,12 @@
         hkv_sensor:             modal.querySelector("#m-hkv-sensor")?.value.trim() || "",
         hkv_factor:             parseFloat(modal.querySelector("#m-hkv-factor")?.value) || 0.083,
         boost_default_duration: parseInt(modal.querySelector("#m-boost-dur")?.value, 10) || 60,
+        boost_temp:             parseFloat(modal.querySelector("#m-boost-temp")?.value) || 0,
         trv_temp_weight:        parseFloat(modal.querySelector("#m-trv-temp-weight")?.value) || 0,
         trv_temp_offset:        parseFloat(modal.querySelector("#m-trv-temp-offset")?.value ?? "-2"),
         trv_valve_demand:       modal.querySelector("#m-trv-valve-demand")?.checked === true,
         trv_min_send_interval:  parseInt(modal.querySelector("#m-trv-min-send-interval")?.value, 10) || 0,
+        trv_calibrations:       (() => { try { const v = modal.querySelector("#m-trv-calibrations")?.value.trim(); return v ? JSON.parse(v) : {}; } catch { return {}; } })(),
         temp_calibration:       parseFloat(modal.querySelector("#m-temp-calibration")?.value ?? "0") || 0,
         comfort_temp_entity:      modal.querySelector("#m-comfort-temp-entity")?.value.trim() || "",
         eco_temp_entity:          modal.querySelector("#m-eco-temp-entity")?.value.trim() || "",
@@ -793,7 +810,7 @@
           <div class="settings-item">
             <label>Bewegungsmelder (PIR)</label>
             <input class="form-input" type="text" id="m-presence-sensor"
-              value="${room.presence_sensor ?? ''}" placeholder="binary_sensor.bewegung_wohnzimmer">
+              value="${room.presence_sensor ?? ''}" placeholder="binary_sensor.bewegung_wohnzimmer" data-ep-domains="binary_sensor" autocomplete="off">
           </div>
           <div class="settings-item">
             <label>PIR Einschalt-Verzögerung (s)</label>
@@ -990,13 +1007,19 @@
         <summary>⚡ Boost</summary>
         <div class="modal-collapsible-body">
           <p style="font-size:0.85em;color:var(--secondary-text-color);margin:0 0 8px">
-            Aktiviert den nativen HA-Boost-Modus auf den TRVs. Kein Temperaturziel – der TRV öffnet vollständig.
+            Aktiviert den nativen HA-Boost-Modus auf den TRVs, oder eine feste Zieltemperatur wenn unten gesetzt.
           </p>
           <div class="settings-grid" style="margin-bottom:10px">
             <div class="settings-item">
               <label>Boost-Dauer (min)</label>
               <input type="number" class="form-input" id="m-boost-dur"
                 value="${room.boost_default_duration ?? 60}" min="5" max="480" step="5">
+            </div>
+            <div class="settings-item">
+              <label>Boost-Zieltemperatur (°C)</label>
+              <input type="number" class="form-input" id="m-boost-temp"
+                value="${room.boost_temp ?? 0}" min="0" max="30" step="0.5" placeholder="0 = Komfort-Temperatur">
+              <span class="form-hint">0 = deaktiviert, nutzt stattdessen die Komfort-Temperatur.</span>
             </div>
           </div>
           <div class="form-row" style="gap:8px">
@@ -1125,6 +1148,7 @@
         window_cascade_delay_minutes: parseInt(modal.querySelector("#m-cascade-delay")?.value, 10) || 30,
         window_cascade_offset:    parseFloat(modal.querySelector("#m-cascade-offset")?.value) || 3.0,
         boost_default_duration:   parseInt(modal.querySelector("#m-boost-dur")?.value, 10) || 60,
+        boost_temp:               parseFloat(modal.querySelector("#m-boost-temp")?.value) || 0,
         trv_temp_weight:          parseFloat(modal.querySelector("#m-trv-temp-weight")?.value) || 0,
         trv_temp_offset:          parseFloat(modal.querySelector("#m-trv-temp-offset")?.value ?? "-2"),
         trv_valve_demand:         modal.querySelector("#m-trv-valve-demand")?.checked === true,
@@ -1215,42 +1239,6 @@
       root.innerHTML = "";
     }
     this._modalOpen = false;
-  }
-
-  _cleanupEntityPickers(container) {
-    container?.querySelectorAll("input[data-ep-domains]").forEach(inp => inp._epCleanup?.());
-  }
-
-  /** Binds "+"-buttons that add entity rows to entity-list containers. */
-  _bindEntityListAdders() {
-    setTimeout(() => {
-      this.shadowRoot.querySelectorAll(".add-entity").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const listId    = btn.dataset.list;
-          const epDomains = btn.dataset.epDomains || "";
-          const list      = this.shadowRoot.querySelector(`#${listId}`);
-          if (!list) return;
-          const placeholder = btn.closest(".entity-row").querySelector("input").placeholder;
-          const row = document.createElement("div");
-          row.className = "entity-row";
-          row.innerHTML = `
-            <input type="text" class="form-input" placeholder="${placeholder}"
-              ${epDomains ? `data-ep-domains="${epDomains}"` : ""} autocomplete="off">
-            <button class="btn btn-danger btn-icon remove-entity">✕</button>`;
-          list.appendChild(row);
-          row.querySelector(".remove-entity").addEventListener("click", () => row.remove());
-          // Attach entity picker to the new input
-          if (epDomains) this._attachEntityPickers(row);
-        });
-      });
-      // Also bind remove-entity buttons already in DOM (pre-filled rows)
-      this.shadowRoot.querySelectorAll(".remove-entity").forEach(btn => {
-        if (!btn._bound) {
-          btn._bound = true;
-          btn.addEventListener("click", () => btn.closest(".entity-row").remove());
-        }
-      });
-    }, 30);
   }
 
   // ── HA Schedule row helpers ─────────────────────────────────────────────

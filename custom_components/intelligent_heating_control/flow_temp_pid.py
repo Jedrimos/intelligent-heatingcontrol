@@ -35,12 +35,14 @@ class FlowTempPID:
 
         self._integral: float = 0.0
         self._last_error: float = 0.0
+        self._last_measurement: Optional[float] = None
         self._last_time: Optional[datetime] = None
 
     def reset(self) -> None:
         """Reset integrator state (call when setpoint changes significantly)."""
         self._integral = 0.0
         self._last_error = 0.0
+        self._last_measurement = None
         self._last_time = None
 
     def compute(self, setpoint: float, measurement: float) -> float:
@@ -65,11 +67,15 @@ class FlowTempPID:
             self._integral += error * dt_minutes
             self._integral = max(-self._integral_clamp, min(self._integral_clamp, self._integral))
 
-        # Derivative (zero on first call)
+        # Derivative on MEASUREMENT (not error) to avoid "derivative kick": a step
+        # change in setpoint (heating-curve recompute, schedule transition) would
+        # otherwise produce a large error jump unrelated to the sensor reading,
+        # which this term would then amplify for one cycle.
         derivative = 0.0
-        if dt_minutes > 0:
-            derivative = (error - self._last_error) / dt_minutes
+        if dt_minutes > 0 and self._last_measurement is not None:
+            derivative = -(measurement - self._last_measurement) / dt_minutes
         self._last_error = error
+        self._last_measurement = measurement
 
         output = setpoint + self.kp * error + self.ki * self._integral + self.kd * derivative
         return max(self.output_min, min(self.output_max, output))

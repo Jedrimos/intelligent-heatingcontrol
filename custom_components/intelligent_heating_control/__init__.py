@@ -95,6 +95,8 @@ from .const import (
     CONF_ROOM_PREHEAT_MINUTES,
     CONF_ROOM_PRESENCE_ENTITIES,
     CONF_BOOST_DEFAULT_DURATION,
+    CONF_BOOST_TEMP,
+    DEFAULT_BOOST_TEMP,
     CONF_TRV_TEMP_WEIGHT,
     CONF_TRV_TEMP_OFFSET,
     CONF_TRV_VALVE_DEMAND,
@@ -145,6 +147,18 @@ from .const import (
 from .coordinator import IHCCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _coerce_bool(value: Any) -> bool:
+    """Safely coerce a service-call value to bool.
+
+    `bool("false")` is `True` in Python, so a plain bool() cast would corrupt
+    any boolean field that arrives as a string (e.g. from a YAML script/template
+    instead of the frontend's native JSON boolean).
+    """
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -333,10 +347,11 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
             CONF_ROOM_PREHEAT_MINUTES: int(call.data.get(CONF_ROOM_PREHEAT_MINUTES, DEFAULT_ROOM_PREHEAT_MINUTES)),
             CONF_ROOM_PRESENCE_ENTITIES: call.data.get(CONF_ROOM_PRESENCE_ENTITIES, []),
             CONF_BOOST_DEFAULT_DURATION: int(call.data.get(CONF_BOOST_DEFAULT_DURATION, DEFAULT_BOOST_DEFAULT_DURATION)),
+            CONF_BOOST_TEMP: float(call.data.get(CONF_BOOST_TEMP, DEFAULT_BOOST_TEMP)),
             CONF_MOLD_HUMIDITY_THRESHOLD: float(call.data.get(CONF_MOLD_HUMIDITY_THRESHOLD, DEFAULT_MOLD_HUMIDITY_THRESHOLD)),
             CONF_TRV_TEMP_WEIGHT: float(call.data.get(CONF_TRV_TEMP_WEIGHT, DEFAULT_TRV_TEMP_WEIGHT)),
             CONF_TRV_TEMP_OFFSET: float(call.data.get(CONF_TRV_TEMP_OFFSET, DEFAULT_TRV_TEMP_OFFSET)),
-            CONF_TRV_VALVE_DEMAND: bool(call.data.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND)),
+            CONF_TRV_VALVE_DEMAND: _coerce_bool(call.data.get(CONF_TRV_VALVE_DEMAND, DEFAULT_TRV_VALVE_DEMAND)),
             CONF_TRV_MIN_SEND_INTERVAL: int(call.data.get(CONF_TRV_MIN_SEND_INTERVAL, DEFAULT_TRV_MIN_SEND_INTERVAL)),
             CONF_TRV_CALIBRATIONS: call.data.get(CONF_TRV_CALIBRATIONS) or {},
             CONF_WINDOW_OPEN_TEMP: float(call.data.get(CONF_WINDOW_OPEN_TEMP, DEFAULT_WINDOW_OPEN_TEMP)),
@@ -350,7 +365,7 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
             CONF_COMFORT_EXTEND_ENTITY: call.data.get(CONF_COMFORT_EXTEND_ENTITY, ""),
             CONF_COMFORT_EXTEND_STATE: call.data.get(CONF_COMFORT_EXTEND_STATE, DEFAULT_COMFORT_EXTEND_STATE),
             CONF_COMFORT_EXTEND_ENTRIES: list(call.data.get(CONF_COMFORT_EXTEND_ENTRIES, [])),
-            CONF_AGGRESSIVE_MODE_ENABLED: bool(call.data.get(CONF_AGGRESSIVE_MODE_ENABLED, DEFAULT_AGGRESSIVE_MODE_ENABLED)),
+            CONF_AGGRESSIVE_MODE_ENABLED: _coerce_bool(call.data.get(CONF_AGGRESSIVE_MODE_ENABLED, DEFAULT_AGGRESSIVE_MODE_ENABLED)),
             CONF_AGGRESSIVE_MODE_RANGE: float(call.data.get(CONF_AGGRESSIVE_MODE_RANGE, DEFAULT_AGGRESSIVE_MODE_RANGE)),
             CONF_AGGRESSIVE_MODE_OFFSET: float(call.data.get(CONF_AGGRESSIVE_MODE_OFFSET, DEFAULT_AGGRESSIVE_MODE_OFFSET)),
             CONF_TEMP_CALIBRATION: float(call.data.get(CONF_TEMP_CALIBRATION, 0.0)),
@@ -379,7 +394,7 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
             CONF_RADIATOR_KW, CONF_HKV_FACTOR, CONF_MOLD_HUMIDITY_THRESHOLD,
             CONF_TRV_TEMP_WEIGHT, CONF_TRV_TEMP_OFFSET, CONF_ROOM_TEMP_THRESHOLD,
             CONF_WINDOW_OPEN_TEMP, CONF_AGGRESSIVE_MODE_RANGE, CONF_AGGRESSIVE_MODE_OFFSET,
-            CONF_TEMP_CALIBRATION, CONF_WINDOW_CASCADE_OFFSET,
+            CONF_TEMP_CALIBRATION, CONF_WINDOW_CASCADE_OFFSET, CONF_BOOST_TEMP,
         }
         _INT_FIELDS = {
             CONF_WINDOW_REACTION_TIME, CONF_WINDOW_CLOSE_DELAY,
@@ -397,7 +412,7 @@ def _register_services(hass: HomeAssistant, coordinator: IHCCoordinator, entry: 
                 elif k in _INT_FIELDS:
                     updates[k] = int(float(v))
                 elif k in _BOOL_FIELDS:
-                    updates[k] = bool(v)
+                    updates[k] = _coerce_bool(v)
                 else:
                     updates[k] = v
             except (TypeError, ValueError):

@@ -5,6 +5,8 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+from homeassistant.util import dt as dt_util
+
 from .const import (
     CONF_VACATION_START,
     CONF_VACATION_END,
@@ -131,7 +133,7 @@ class VacationManagerMixin:
         cal_entity = cfg.get(CONF_VACATION_CALENDAR)
         if not cal_entity:
             return
-        today_yday = datetime.now().timetuple().tm_yday
+        today_yday = dt_util.now().timetuple().tm_yday
         if self._vac_calendar_last_check == today_yday:
             return
         self._vac_calendar_last_check = today_yday
@@ -159,7 +161,17 @@ class VacationManagerMixin:
             summary = event.get("summary", "").lower()
             if keyword in summary:
                 start_str = str(event.get("start", ""))[:10]
-                end_str   = str(event.get("end",   ""))[:10]
+                end_raw   = str(event.get("end", ""))
+                end_str   = end_raw[:10]
+                # All-day calendar events report `end` as EXCLUSIVE (the day after
+                # the last vacation day, per iCal/HA convention) — a pure date string
+                # (no "T" time component) always means an all-day event. Subtract one
+                # day so the inclusive vac_start <= today <= vac_end check is correct.
+                if len(end_raw) == 10 and end_str:
+                    try:
+                        end_str = (date.fromisoformat(end_str) - timedelta(days=1)).isoformat()
+                    except ValueError:
+                        pass
                 if start_str and end_str:
                     if start_str != cfg.get(CONF_VACATION_START) or end_str != cfg.get(CONF_VACATION_END):
                         _LOGGER.info("Vacation calendar: found '%s' → %s – %s", summary, start_str, end_str)

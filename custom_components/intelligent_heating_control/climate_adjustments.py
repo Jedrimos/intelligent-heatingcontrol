@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_NIGHT_SETBACK_ENABLED,
@@ -208,7 +209,7 @@ class ClimateAdjustmentsMixin:
         cfg = self.get_config()
         if not cfg.get(CONF_ADAPTIVE_CURVE_ENABLED, DEFAULT_ADAPTIVE_CURVE_ENABLED):
             return
-        today_yday = datetime.now().timetuple().tm_yday
+        today_yday = dt_util.now().timetuple().tm_yday
         if self._curve_last_adapted == today_yday:
             return
         self._curve_last_adapted = today_yday
@@ -281,7 +282,7 @@ class ClimateAdjustmentsMixin:
         forecast_attr = cfg.get(CONF_PRICE_FORECAST_ATTRIBUTE, DEFAULT_PRICE_FORECAST_ATTRIBUTE)
         today_prices = state.attributes.get(forecast_attr, [])
         if today_prices and isinstance(today_prices, list):
-            current_hour = datetime.now().hour
+            current_hour = dt_util.now().hour
             if current_hour < len(today_prices):
                 current_price = float(today_prices[current_hour])
                 avg_price = sum(float(p) for p in today_prices) / len(today_prices)
@@ -324,10 +325,14 @@ class ClimateAdjustmentsMixin:
                 continue
             try:
                 eta_dt = datetime.fromisoformat(str(eta_attr).replace("Z", "+00:00"))
-                # Normalise to naive local time for comparison (consistent with datetime.now() usage)
+                # Normalise to HA's configured timezone (not the OS/process timezone,
+                # which can differ, e.g. a UTC-configured Docker host running an
+                # Europe/Berlin Home Assistant instance).
                 if eta_dt.tzinfo is not None:
-                    eta_dt = eta_dt.astimezone().replace(tzinfo=None)
-                minutes = (eta_dt - datetime.now()).total_seconds() / 60
+                    eta_dt = dt_util.as_local(eta_dt)
+                else:
+                    eta_dt = eta_dt.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+                minutes = (eta_dt - dt_util.now()).total_seconds() / 60
                 threshold = int(cfg.get(CONF_ETA_PREHEAT_THRESHOLD_MINUTES, DEFAULT_ETA_PREHEAT_THRESHOLD_MINUTES))
                 if 0 < minutes <= threshold:
                     min_minutes = min(min_minutes or minutes, minutes)

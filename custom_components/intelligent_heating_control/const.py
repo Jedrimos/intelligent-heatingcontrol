@@ -330,6 +330,8 @@ DEFAULT_CONTROLLER_MODE: Final = CONTROLLER_MODE_SWITCH
 # Boost-Modus (per room) – uses HA native climate boost preset
 CONF_BOOST_DEFAULT_DURATION: Final = "boost_default_duration"  # minutes
 DEFAULT_BOOST_DEFAULT_DURATION: Final = 60
+CONF_BOOST_TEMP: Final = "boost_temp"  # °C target while boosted; 0 = disabled (falls back to comfort_temp)
+DEFAULT_BOOST_TEMP: Final = 0.0
 
 # Gäste-Modus
 CONF_GUEST_DURATION_HOURS: Final = "guest_duration_hours"

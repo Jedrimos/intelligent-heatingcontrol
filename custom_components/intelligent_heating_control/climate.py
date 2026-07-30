@@ -55,6 +55,8 @@ from .const import (
     CONF_AWAY_TEMP_ROOM,
     DEFAULT_AWAY_TEMP_ROOM,
     CONF_BOOST_DEFAULT_DURATION,
+    CONF_BOOST_TEMP,
+    DEFAULT_BOOST_TEMP,
     CONF_TRV_TEMP_WEIGHT,
     DEFAULT_TRV_TEMP_WEIGHT,
     CONF_TRV_TEMP_OFFSET,
@@ -455,12 +457,14 @@ class IHCRoomClimate(CoordinatorEntity, ClimateEntity):
             "aggressive_mode_offset": room_cfg.get(CONF_AGGRESSIVE_MODE_OFFSET, DEFAULT_AGGRESSIVE_MODE_OFFSET),
             # Boost config
             "boost_default_duration": room_cfg.get(CONF_BOOST_DEFAULT_DURATION, DEFAULT_BOOST_DEFAULT_DURATION),
+            "boost_temp": room_cfg.get(CONF_BOOST_TEMP, DEFAULT_BOOST_TEMP),
             # Ventilation advice + CO2
             "co2_sensor": room_cfg.get(CONF_CO2_SENSOR, ""),
             "co2_threshold_good": room_cfg.get(CONF_CO2_THRESHOLD_GOOD, DEFAULT_CO2_THRESHOLD_GOOD),
             "co2_threshold_bad": room_cfg.get(CONF_CO2_THRESHOLD_BAD, DEFAULT_CO2_THRESHOLD_BAD),
             "co2_ppm": d.get("co2_ppm"),
             "co2_ventilation_eta_minutes": d.get("co2_ventilation_eta_minutes"),
+            "co2_preheat_boost": d.get("co2_preheat_boost", False),
             "ventilation": d.get("ventilation"),
             # TRV sensor data integration (optional)
             "trv_temp_weight": room_cfg.get(CONF_TRV_TEMP_WEIGHT, DEFAULT_TRV_TEMP_WEIGHT),

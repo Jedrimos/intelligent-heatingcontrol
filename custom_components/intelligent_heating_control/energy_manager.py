@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_HKV_SENSOR,
@@ -28,7 +29,7 @@ class EnergyManagerMixin:
     """Mixin for heating runtime tracking and energy estimation."""
 
     def _reset_runtime_if_new_day(self) -> None:
-        today = datetime.now().day
+        today = dt_util.now().day
         if today != self._runtime_day:
             # Save today's runtime as yesterday before reset
             self._heating_runtime_yesterday = self._heating_runtime_today

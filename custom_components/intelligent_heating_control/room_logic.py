@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from homeassistant.const import STATE_ON
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_ROOM_ID,
@@ -76,6 +77,8 @@ from .const import (
     DEFAULT_ADAPTIVE_PREHEAT_ENABLED,
     CONF_OPTIMUM_START_ENABLED,
     DEFAULT_OPTIMUM_START_ENABLED,
+    CONF_BOOST_TEMP,
+    DEFAULT_BOOST_TEMP,
     ROOM_MODE_AUTO,
     ROOM_MODE_COMFORT,
     ROOM_MODE_ECO,
@@ -507,6 +510,32 @@ class RoomLogicMixin:
                 "source": "guest_mode", "schedule_active": False
             }
 
+        # --- 1c. Room temperature threshold override (Blueprint: input_mode_room_temperature_threshold) ---
+        # If current room temp is below threshold, force comfort heating regardless of room mode.
+        # Does NOT override system-level OFF/VACATION (handled above). MUST run before the
+        # presence-based away checks (1b/1b2) below: this is a hard safety floor against
+        # freezing rooms, and it must still apply while nobody is home (AUTO + presence-away),
+        # not just when a room is manually set to AWAY.
+        room_threshold = float(room.get(CONF_ROOM_TEMP_THRESHOLD, DEFAULT_ROOM_TEMP_THRESHOLD))
+        if room_threshold > 0.0 and room_mode in (ROOM_MODE_AUTO, ROOM_MODE_ECO, ROOM_MODE_SLEEP, ROOM_MODE_AWAY):
+            temp_sensor = room.get(CONF_TEMP_SENSOR, "")
+            current_temp = None
+            if temp_sensor:
+                s = self.hass.states.get(temp_sensor)
+                if s and s.state not in ("unknown", "unavailable"):
+                    try:
+                        current_temp = float(s.state)
+                    except (ValueError, TypeError):
+                        pass
+            if current_temp is not None and current_temp < room_threshold:
+                target = min(max_temp, max(min_temp, comfort_base + room_offset))
+                return target, {
+                    "source": "temp_threshold_override",
+                    "schedule_active": False,
+                    "threshold": room_threshold,
+                    "current_temp": current_temp,
+                }
+
         # --- 1b0. Holiday calendar override (v1.8) ---
         # When a public holiday / school holiday calendar event is active, treat the day
         # as a weekend (use Saturday schedule) OR force comfort temperature.
@@ -521,7 +550,7 @@ class RoomLogicMixin:
             # We set _holiday_force_weekend on self so that the schedule manager call below
             # uses a modified datetime with weekday=5 (Saturday) instead of the real day.
             # This is stored as a simple boolean flag and read just before ScheduleManager calls.
-            _today_weekday = datetime.now().weekday()  # 0=Mon … 4=Fri → use Sat; 5/6 already weekend
+            _today_weekday = dt_util.now().weekday()  # 0=Mon … 4=Fri → use Sat; 5/6 already weekend
             self._holiday_force_weekend = _today_weekday < 5
         else:
             self._holiday_force_weekend = False
@@ -546,29 +575,6 @@ class RoomLogicMixin:
                 "away_base": effective_pir_away,
             }
 
-        # --- 1c. Room temperature threshold override (Blueprint: input_mode_room_temperature_threshold) ---
-        # If current room temp is below threshold, force comfort heating regardless of room mode.
-        # Does NOT override system-level OFF/VACATION.
-        room_threshold = float(room.get(CONF_ROOM_TEMP_THRESHOLD, DEFAULT_ROOM_TEMP_THRESHOLD))
-        if room_threshold > 0.0 and room_mode in (ROOM_MODE_AUTO, ROOM_MODE_ECO, ROOM_MODE_SLEEP, ROOM_MODE_AWAY):
-            temp_sensor = room.get(CONF_TEMP_SENSOR, "")
-            current_temp = None
-            if temp_sensor:
-                s = self.hass.states.get(temp_sensor)
-                if s and s.state not in ("unknown", "unavailable"):
-                    try:
-                        current_temp = float(s.state)
-                    except (ValueError, TypeError):
-                        pass
-            if current_temp is not None and current_temp < room_threshold:
-                target = min(max_temp, max(min_temp, comfort_base + room_offset))
-                return target, {
-                    "source": "temp_threshold_override",
-                    "schedule_active": False,
-                    "threshold": room_threshold,
-                    "current_temp": current_temp,
-                }
-
         # --- 2. Room mode preset overrides ---
         if room_mode == ROOM_MODE_OFF:
             return min_temp, {"source": "room_off", "schedule_active": False}
@@ -582,6 +588,16 @@ class RoomLogicMixin:
             }
 
         if room_mode == ROOM_MODE_COMFORT:
+            # Boost mode switches room_mode to COMFORT (see coordinator.set_room_boost).
+            # If a custom boost temperature is configured, use it instead of the
+            # regular comfort target while the boost is actually active.
+            if room_id in getattr(self, "_boost_until", {}):
+                boost_temp = float(room.get(CONF_BOOST_TEMP, DEFAULT_BOOST_TEMP))
+                if boost_temp > 0.0:
+                    return min(max_temp, max(min_temp, boost_temp)), {
+                        "source": "boost", "schedule_active": False,
+                        "boost_temp": boost_temp,
+                    }
             return min(max_temp, max(min_temp, comfort_base + room_offset)), {
                 "source": "comfort", "schedule_active": False,
                 "comfort_base": comfort_base,
@@ -755,7 +771,7 @@ class RoomLogicMixin:
             # v1.8 – Holiday weekend override: treat today as Saturday for schedule lookup
             _sched_now = None
             if getattr(self, "_holiday_force_weekend", False):
-                _real_now = datetime.now()
+                _real_now = dt_util.now()
                 # Move to next Saturday: weekday=5; timedelta shifts days
                 _days_to_sat = (5 - _real_now.weekday()) % 7
                 if _days_to_sat == 0:

@@ -99,6 +99,7 @@ from .const import (
     CONF_MIN_TEMP,
     CONF_MAX_TEMP,
     CONF_SCHEDULES,
+    CONF_HA_SCHEDULES,
     CONF_ABSOLUTE_MIN_TEMP,
     CONF_ROOM_QM,
     CONF_ROOM_PREHEAT_MINUTES,
@@ -114,6 +115,8 @@ from .const import (
     CONF_HKV_FACTOR,
     CONF_HA_SCHEDULE_OFF_MODE,
     CONF_BOOST_DEFAULT_DURATION,
+    CONF_BOOST_TEMP,
+    DEFAULT_BOOST_TEMP,
     CONF_ROOM_PRESENCE_ENTITIES,
     CONF_TRV_TEMP_WEIGHT,
     CONF_TRV_TEMP_OFFSET,
@@ -855,6 +858,7 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
                 CONF_HKV_SENSOR: user_input.get(CONF_HKV_SENSOR, ""),
                 CONF_HKV_FACTOR: float(user_input.get(CONF_HKV_FACTOR, DEFAULT_HKV_FACTOR)),
                 CONF_BOOST_DEFAULT_DURATION: int(user_input.get(CONF_BOOST_DEFAULT_DURATION, DEFAULT_BOOST_DEFAULT_DURATION)),
+                CONF_BOOST_TEMP: float(user_input.get(CONF_BOOST_TEMP, DEFAULT_BOOST_TEMP)),
                 CONF_ROOM_PRESENCE_ENTITIES: user_input.get(CONF_ROOM_PRESENCE_ENTITIES, []),
                 CONF_TRV_TEMP_WEIGHT: float(user_input.get(CONF_TRV_TEMP_WEIGHT, DEFAULT_TRV_TEMP_WEIGHT)),
                 CONF_TRV_TEMP_OFFSET: float(user_input.get(CONF_TRV_TEMP_OFFSET, DEFAULT_TRV_TEMP_OFFSET)),
@@ -876,7 +880,9 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
                 CONF_AGGRESSIVE_MODE_OFFSET: float(user_input.get(CONF_AGGRESSIVE_MODE_OFFSET, DEFAULT_AGGRESSIVE_MODE_OFFSET)),
                 CONF_TEMP_CALIBRATION: float(user_input.get(CONF_TEMP_CALIBRATION, 0.0)),
                 CONF_COMFORT_EXTEND_ENTRIES: list(user_input.get(CONF_COMFORT_EXTEND_ENTRIES, [])),
-                CONF_WINDOW_CASCADE_ROOMS: [],
+                CONF_WINDOW_CASCADE_ROOMS: list(user_input.get(CONF_WINDOW_CASCADE_ROOMS, [])),
+                CONF_WINDOW_CASCADE_DELAY_MINUTES: int(user_input.get(CONF_WINDOW_CASCADE_DELAY_MINUTES, DEFAULT_WINDOW_CASCADE_DELAY_MINUTES)),
+                CONF_WINDOW_CASCADE_OFFSET: float(user_input.get(CONF_WINDOW_CASCADE_OFFSET, DEFAULT_WINDOW_CASCADE_OFFSET)),
                 CONF_SCHEDULES: [],
                 CONF_HA_SCHEDULES: [],
             }
@@ -956,6 +962,16 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(CONF_WINDOW_CASCADE_OFFSET, default=float(DEFAULT_WINDOW_CASCADE_OFFSET)): selector.selector({
                 "number": {"min": 0.5, "max": 10, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
+            vol.Optional(CONF_WINDOW_CASCADE_ROOMS, default=[]): selector.selector({
+                "select": {
+                    "multiple": True,
+                    "custom_value": True,
+                    "options": [
+                        {"label": r.get(CONF_ROOM_NAME, r.get(CONF_ROOM_ID, "")), "value": r.get(CONF_ROOM_ID, "")}
+                        for r in self._options.get(CONF_ROOMS, [])
+                    ],
+                }
+            }),
             vol.Optional(CONF_HA_SCHEDULE_OFF_MODE, default=DEFAULT_HA_SCHEDULE_OFF_MODE): selector.selector({
                 "select": {"options": ["eco", "sleep", "away"]}
             }),
@@ -980,6 +996,9 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             }),
             vol.Optional(CONF_BOOST_DEFAULT_DURATION, default=DEFAULT_BOOST_DEFAULT_DURATION): selector.selector({
                 "number": {"min": 5, "max": 480, "step": 5, "unit_of_measurement": "min", "mode": "box"}
+            }),
+            vol.Optional(CONF_BOOST_TEMP, default=float(DEFAULT_BOOST_TEMP)): selector.selector({
+                "number": {"min": 0, "max": 30, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
             vol.Optional(CONF_TRV_TEMP_WEIGHT, default=DEFAULT_TRV_TEMP_WEIGHT): selector.selector({
                 "number": {"min": 0.0, "max": 0.5, "step": 0.05, "mode": "box"}
@@ -1171,6 +1190,9 @@ class IHCOptionsFlow(config_entries.OptionsFlow):
             }),
             vol.Optional(CONF_BOOST_DEFAULT_DURATION, default=int(room.get(CONF_BOOST_DEFAULT_DURATION, DEFAULT_BOOST_DEFAULT_DURATION))): selector.selector({
                 "number": {"min": 5, "max": 480, "step": 5, "unit_of_measurement": "min", "mode": "box"}
+            }),
+            vol.Optional(CONF_BOOST_TEMP, default=float(room.get(CONF_BOOST_TEMP, DEFAULT_BOOST_TEMP))): selector.selector({
+                "number": {"min": 0, "max": 30, "step": 0.5, "unit_of_measurement": "°C", "mode": "box"}
             }),
             vol.Optional(CONF_TRV_TEMP_WEIGHT, default=float(room.get(CONF_TRV_TEMP_WEIGHT, DEFAULT_TRV_TEMP_WEIGHT))): selector.selector({
                 "number": {"min": 0.0, "max": 0.5, "step": 0.05, "mode": "box"}

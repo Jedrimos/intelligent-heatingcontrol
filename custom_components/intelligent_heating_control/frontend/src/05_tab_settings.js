@@ -570,13 +570,11 @@
               </select>
               <span class="form-hint">Zeigt geschätzte Kilowattstunden und (wenn Preis konfiguriert) die Kosten des Tages.</span>
             </div>
-            ${g.controller_mode !== "trv" ? `
-            <div class="settings-item">
+            <div class="settings-item" id="boiler-kw-item" style="display:${g.controller_mode === "trv" ? "none" : ""}">
               <label>Kesselleistung (kW)</label>
               <input type="number" class="form-input" id="boiler-kw" min="1" max="100" step="1" value="${a.boiler_kw ?? 20}">
               <span class="form-hint">Nennleistung deines Kessels. IHC rechnet: <em>Laufzeit × kW = kWh</em>. Unbekannt? Nutze den Kalibrierungs-Assistenten darunter.</span>
             </div>
-            ` : ""}
             <div class="settings-item">
               <label>Fester Energiepreis (€/kWh) <span style="font-size:10px;color:var(--secondary-text-color)">(optional)</span></label>
               <input type="number" class="form-input" id="static-energy-price" min="0.01" max="2" step="0.01" value="${a.static_energy_price ?? ''}" placeholder="z.B. 0.09 (leer = nur kWh)">
@@ -595,7 +593,7 @@
               <span class="form-hint">Zimmer werden auf diese Temperatur heruntergekühlt wenn Kühlung aktiv ist.</span>
             </div>
           </div>
-          ${g.controller_mode !== "trv" ? `<div id="sec-flow-pid" style="margin-top:8px">
+          <div id="sec-flow-pid" style="margin-top:8px;display:${g.controller_mode === "trv" ? "none" : ""}">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;padding:6px 0;user-select:none">
               <input type="checkbox" id="flow-temp-enabled" ${a.flow_temp_entity ? "checked" : ""}>
               🌡️ Vorlauftemperatur-Regelung
@@ -637,7 +635,7 @@
                 <button class="btn btn-primary" id="save-flow-settings">💾 Vorlauf &amp; PID speichern</button>
               </div>
             </div>
-          </div>` : ""}
+          </div>
           <hr class="divider">
           <div class="card-title" style="font-size:13px;margin:8px 0">☀️ Solarüberschuss-Heizung</div>
           <p style="font-size:12px;color:var(--secondary-text-color);margin:0 0 10px">
@@ -684,6 +682,13 @@
               <label>Eco-Absenkung bei hohem Preis (°C)</label>
               <input type="number" class="form-input" id="energy-price-eco-offset" min="0.5" max="6" step="0.5" value="${a.energy_price_eco_offset ?? 2}">
               <span class="form-hint">Um diesen Betrag werden die Zieltemperaturen in der teuren Zeit reduziert.</span>
+            </div>
+            <div class="settings-item">
+              <label>Preis-Prognose-Attribut</label>
+              <input type="text" class="form-input" id="price-forecast-attribute"
+                placeholder="today_prices"
+                value="${a.price_forecast_attribute ?? 'today_prices'}">
+              <span class="form-hint">Attributname für stündliche Preise (Tibber/Nordpool). Standard: <code>today_prices</code>.</span>
             </div>
           </div>
           <div class="btn-row">
@@ -739,8 +744,7 @@
         </summary>
         <div class="ihc-card-body">
           <div class="settings-grid">
-            ${g.controller_mode !== "trv" ? `
-            <div class="settings-item">
+            <div class="settings-item" style="display:${g.controller_mode === "trv" ? "none" : ""}">
               <label>Adaptive Heizkurve</label>
               <select class="form-select" id="adaptive-curve-enabled">
                 <option value="false" ${!(a.adaptive_curve_enabled ?? a.curve_adaptation_enabled) ? "selected" : ""}>Deaktiviert</option>
@@ -754,12 +758,11 @@
                   : ""}
               </span>
             </div>
-            <div id="adaptive-curve-max-delta-item" class="settings-item">
+            <div id="adaptive-curve-max-delta-item" class="settings-item" style="display:${g.controller_mode === "trv" ? "none" : ""}">
               <label>Max. Kurvenkorrektur (°C)</label>
               <input type="number" class="form-input" id="adaptive-curve-max-delta" min="0.5" max="10" step="0.5" value="${a.adaptive_curve_max_delta ?? 3.0}">
               <span class="form-hint">Maximale kumulative Verschiebung der Heizkurve durch adaptives Lernen (±). Typisch: 2–5 °C</span>
             </div>
-            ` : ""}
             <div class="settings-item">
               <label>Adaptives Vorheizen <span style="font-weight:400;font-size:10px">(lernbasiert)</span></label>
               <select class="form-select" id="adaptive-preheat-enabled">
@@ -802,6 +805,13 @@
                 placeholder="calendar.urlaub (leer = aus)"
                 value="${a.vacation_calendar ?? ''}" data-ep-domains="calendar" autocomplete="off">
               <span class="form-hint">Kalender-Entität aus HA. Termine die das Schlüsselwort „urlaub" im Namen enthalten schalten automatisch den Urlaubs-Modus ein.</span>
+            </div>
+            <div class="settings-item">
+              <label>Urlaubs-Kalender Stichwort</label>
+              <input type="text" class="form-input" id="vacation-calendar-keyword"
+                placeholder="urlaub"
+                value="${a.vacation_calendar_keyword ?? 'urlaub'}">
+              <span class="form-hint">Stichwort im Termintext das den Urlaubs-Kalender oben auslöst (Standard: „urlaub").</span>
             </div>
             <div class="settings-item">
               <label>Feiertags-/Ferienkalender</label>
@@ -869,6 +879,12 @@
               <input type="number" class="form-input" id="stuck-valve-timeout" min="300" max="7200" step="300"
                 value="${a.stuck_valve_timeout ?? 1800}">
               <span class="form-hint">Sekunden bis ein klemmendes Ventil als Fehler gemeldet wird (Standard: 1800 = 30 min). Erkannte Fehler erscheinen als binary_sensor.</span>
+            </div>
+            <div class="settings-item">
+              <label>Startup-Gnadenfrist (s)</label>
+              <input type="number" class="form-input" id="startup-grace-seconds" min="0" max="300" step="10"
+                value="${a.startup_grace_seconds ?? 60}">
+              <span class="form-hint">Sekunden nach HA-Start bevor Zigbee/Z-Wave-Sensoren als ungültig gelten (Standard: 60s). Verhindert Fehlalarme beim Neustart.</span>
             </div>
           </div>
           <div class="btn-row">
@@ -1243,6 +1259,7 @@
         smart_meter_entity:      content.querySelector("#smart-meter-entity").value.trim(),
         cooling_target_temp:     parseFloat(content.querySelector("#cooling-target-temp").value) || 24,
         ...((!isNaN(staticPrice) && staticPrice > 0) ? { static_energy_price: staticPrice } : {}),
+        price_forecast_attribute: content.querySelector("#price-forecast-attribute")?.value.trim() || "today_prices",
       });
       this._toast("✓ Energie/Solar-Einstellungen gespeichert");
     });
@@ -1263,6 +1280,7 @@
         optimum_start_enabled:    content.querySelector("#optimum-start-enabled")?.value === "true",
         eta_preheat_enabled:      content.querySelector("#eta-preheat-enabled")?.value === "true",
         vacation_calendar:        content.querySelector("#vacation-calendar")?.value.trim() ?? "",
+        vacation_calendar_keyword: content.querySelector("#vacation-calendar-keyword")?.value.trim() || "urlaub",
         adaptive_curve_max_delta: parseFloat(content.querySelector("#adaptive-curve-max-delta")?.value) || 3.0,
         holiday_calendar:         content.querySelector("#holiday-calendar")?.value.trim() ?? "",
         holiday_schedule_mode:    content.querySelector("#holiday-schedule-mode")?.value ?? "weekend",
@@ -1285,6 +1303,7 @@
         limescale_time:               content.querySelector("#limescale-time")?.value.trim() || "10:00",
         limescale_duration_minutes:   parseInt(content.querySelector("#limescale-duration")?.value, 10) || 5,
         stuck_valve_timeout:          parseInt(content.querySelector("#stuck-valve-timeout")?.value, 10) || 1800,
+        startup_grace_seconds:        (v => Number.isNaN(v) ? 60 : v)(parseInt(content.querySelector("#startup-grace-seconds")?.value, 10)),
       });
       this._toast("✓ Kalkschutz gespeichert");
     });
@@ -1439,6 +1458,9 @@
       // Energie, Solar & Vorlauf: nur in Switch/HG-Modus
       const ed = content.querySelector("#energie-details");
       if (ed) ed.style.display = isTrv ? "none" : "";
+      // Kesselleistung: nur in Switch/HG-Modus
+      const bki = content.querySelector("#boiler-kw-item");
+      if (bki) bki.style.display = isTrv ? "none" : "";
       // Flow/PID: nur in Switch/HG-Modus
       const sfl = content.querySelector("#sec-flow-pid");
       if (sfl) sfl.style.display = isTrv ? "none" : "";

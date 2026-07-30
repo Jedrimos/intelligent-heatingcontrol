@@ -368,7 +368,7 @@ class IHCCoordinator(
         self._heating_runtime_yesterday: float = 0.0   # total seconds yesterday (Roadmap 2.0)
         self._room_demand_started: Dict[str, datetime] = {}  # room_id → when demand went > 0
         self._room_runtime_today: Dict[str, float] = {}      # room_id → seconds today
-        self._runtime_day: int = datetime.now().day           # to detect day rollover
+        self._runtime_day: int = dt_util.now().day             # to detect day rollover
         # HKV (Heizkostenverteiler) – per-room reading at start of current day
         self._hkv_day_start: Dict[str, Optional[float]] = {}  # room_id → Einheiten at 00:00
 
@@ -441,8 +441,6 @@ class IHCCoordinator(
         self._save_debounce_handle: Optional[Any] = None
         self._SAVE_DEBOUNCE_SECONDS: int = 30
 
-        # Manual TRV override detection: track last IHC-set temperature per room
-        self._last_ihc_set_temps: Dict[str, float] = {}  # room_id → last temp IHC intentionally set
         # Reconnect guard: entities that were unavailable/unknown last cycle → skip override detection
         self._trv_unavailable_entities: set = set()
 
@@ -608,6 +606,8 @@ class IHCCoordinator(
                 self._boost_until[rid] = datetime.fromisoformat(dt_str)
             except (ValueError, TypeError):
                 _LOGGER.debug("IHC: Could not restore boost_until for room %s: %s", rid, dt_str)
+        # Restore the mode to return to when each boost ends
+        self._room_pre_boost_mode = data.get("room_pre_boost_mode", {})
         # Restore temperature history (persisted across restarts)
         for room_id, entries in data.get("temp_history", {}).items():
             self._temp_history[room_id] = deque(entries, maxlen=CONF_TEMP_HISTORY_SIZE)
@@ -658,6 +658,8 @@ class IHCCoordinator(
             "smart_meter_day_start": self._smart_meter_day_start,
             # Persist boost expiry times so active boosts survive HA restarts
             "boost_until": {rid: dt.isoformat() for rid, dt in self._boost_until.items()},
+            # Persist the mode to restore to when each boost ends
+            "room_pre_boost_mode": self._room_pre_boost_mode,
             # Persist temperature history so sparklines survive HA restarts
             "temp_history":    {rid: list(hist) for rid, hist in self._temp_history.items()},
             "target_history":  {rid: list(hist) for rid, hist in self._target_history.items()},
@@ -830,6 +832,8 @@ class IHCCoordinator(
             del self._boost_until[rid]
             prev_mode = self._room_pre_boost_mode.pop(rid, ROOM_MODE_AUTO)
             self._room_modes[rid] = prev_mode
+        if expired:
+            self._schedule_save()
 
     def _is_summer_mode_active(self) -> bool:
         """Return True if Sommerautomatik should block heating."""

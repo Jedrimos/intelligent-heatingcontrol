@@ -6,6 +6,7 @@ import time
 from typing import Optional
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_ROOM_ID,
@@ -475,7 +476,7 @@ class TRVControllerMixin:
             last_ihc = self._last_sent_temps.get(entity_id)
             if last_ihc is None:
                 # First cycle – record current TRV temp as baseline, no detection yet
-                self._last_ihc_set_temps[room_id] = trv_target
+                self._last_sent_temps[entity_id] = trv_target
                 continue
 
             # Confirmation-based pending check (replaces time-based grace):
@@ -648,8 +649,6 @@ class TRVControllerMixin:
         – No room is currently demanding heat (to avoid interrupting heating).
         – The TRV entity is reachable.
         """
-        from datetime import date, datetime as dt
-
         cfg = self.get_config()
         if not cfg.get(CONF_LIMESCALE_PROTECTION_ENABLED, DEFAULT_LIMESCALE_PROTECTION_ENABLED):
             return
@@ -658,7 +657,11 @@ class TRVControllerMixin:
         exercise_time_str = cfg.get(CONF_LIMESCALE_TIME, DEFAULT_LIMESCALE_TIME)
         exercise_duration_s = int(cfg.get(CONF_LIMESCALE_DURATION_MINUTES, DEFAULT_LIMESCALE_DURATION_MINUTES)) * 60
 
-        now_dt = dt.now()
+        # Use HA's configured timezone, not the OS/process timezone (which can
+        # differ, e.g. a UTC-configured Docker host running an Europe/Berlin
+        # Home Assistant instance) — otherwise the exercise window fires at the
+        # wrong wall-clock time relative to what the user configured.
+        now_dt = dt_util.now()
         today = now_dt.date()
         now_mono = time.monotonic()
 

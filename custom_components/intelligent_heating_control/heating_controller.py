@@ -254,7 +254,7 @@ class HeatingController:
         weighted_sum = 0.0
         total_weight = 0.0
         for state in self._room_states.values():
-            if state["room_mode"] == ROOM_MODE_OFF:
+            if state["room_mode"] == ROOM_MODE_OFF or state.get("window_open", False):
                 continue
             ct = state["current_temp"]
             tt = state["target_temp"]

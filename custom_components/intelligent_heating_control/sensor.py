@@ -31,6 +31,9 @@ from .const import (
     CONF_FLOW_TEMP_ENTITY, CONF_FLOW_TEMP_SENSOR,
     CONF_VACATION_START, CONF_VACATION_END,
     CONF_VACATION_CALENDAR,
+    CONF_VACATION_CALENDAR_KEYWORD, DEFAULT_VACATION_CALENDAR_KEYWORD,
+    CONF_PRICE_FORECAST_ATTRIBUTE, DEFAULT_PRICE_FORECAST_ATTRIBUTE,
+    CONF_STATIC_ENERGY_PRICE,
     # v1.3 Adaptive curve + pre-heat
     CONF_ADAPTIVE_CURVE_ENABLED, DEFAULT_ADAPTIVE_CURVE_ENABLED,
     CONF_ADAPTIVE_PREHEAT_ENABLED, DEFAULT_ADAPTIVE_PREHEAT_ENABLED,
@@ -264,13 +267,15 @@ class IHCTotalDemandSensor(_IHCBase, SensorEntity):
             "eta_preheat_enabled":              cfg.get(CONF_ETA_PREHEAT_ENABLED, DEFAULT_ETA_PREHEAT_ENABLED),
             "eta_preheat_threshold_minutes":   cfg.get(CONF_ETA_PREHEAT_THRESHOLD_MINUTES, DEFAULT_ETA_PREHEAT_THRESHOLD_MINUTES),
             "vacation_calendar":           cfg.get(CONF_VACATION_CALENDAR, ""),
+            "vacation_calendar_keyword":   cfg.get(CONF_VACATION_CALENDAR_KEYWORD, DEFAULT_VACATION_CALENDAR_KEYWORD),
+            "price_forecast_attribute":    cfg.get(CONF_PRICE_FORECAST_ATTRIBUTE, DEFAULT_PRICE_FORECAST_ATTRIBUTE),
             "flow_temp_sensor":            cfg.get(CONF_FLOW_TEMP_SENSOR, ""),
             "pid_kp":                      cfg.get(CONF_PID_KP, DEFAULT_PID_KP),
             "pid_ki":                      cfg.get(CONF_PID_KI, DEFAULT_PID_KI),
             "pid_kd":                      cfg.get(CONF_PID_KD, DEFAULT_PID_KD),
             "smart_meter_entity":          cfg.get(CONF_SMART_METER_ENTITY, ""),
             "cooling_target_temp":         cfg.get(CONF_COOLING_TARGET_TEMP, DEFAULT_COOLING_TARGET_TEMP),
-            "static_energy_price":         cfg.get("static_energy_price"),
+            "static_energy_price":         cfg.get(CONF_STATIC_ENERGY_PRICE),
             # Startup grace for Zigbee/Z-Wave sensors
             "startup_grace_seconds":       cfg.get(CONF_STARTUP_GRACE_SECONDS, DEFAULT_STARTUP_GRACE_SECONDS),
             # Stuck-valve detection

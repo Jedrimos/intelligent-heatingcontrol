@@ -37,6 +37,7 @@
             · ${room.current_temp !== null ? room.current_temp + " °C → " + (room.target_temp ?? "—") + " °C" : "kein Sensor"}
             ${room.window_open ? " · 🪟 Fenster offen" : ""}
             ${room.window_cascade_active ? ` · 🌊 Kaskade –${room.window_cascade_offset?.toFixed(1) ?? '?'}°C` : ""}
+            ${room.co2_preheat_boost ? ` · 💨 CO₂-Vorheizboost` : ""}
           </div>
         </div>
       </div>`;
